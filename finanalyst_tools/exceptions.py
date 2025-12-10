@@ -1,75 +1,88 @@
+# finanalyst_tools/exceptions.py
 """
 Custom exception hierarchy for FinAnalyst-Pro tools.
 
-This module defines a structured exception hierarchy that enables:
-- Precise error categorization
-- Detailed error context
-- Actionable error messages for LLM consumption
-- Consistent error handling across the package
+Provides specific exception types for different error categories:
+- Calculation errors (arithmetic, division by zero, invalid inputs)
+- Validation errors (schema, reconciliation, plausibility)
+- Data errors (parsing, missing data)
+- Tool errors (not found, execution failure)
+
+All exceptions support serialization to dict/JSON for structured error handling.
 """
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
+
+# ============================================================================
+# BASE EXCEPTION
+# ============================================================================
 
 class FinAnalystError(Exception):
     """
     Base exception for all FinAnalyst-Pro errors.
     
-    All custom exceptions inherit from this class, enabling
-    catch-all handling when needed.
+    Provides common functionality:
+    - Message storage
+    - Optional details dictionary for context
+    - JSON serialization support
     
-    Attributes:
-        message: Human-readable error description
-        details: Additional context as key-value pairs
-        error_code: Machine-readable error identifier
-        suggestion: Actionable suggestion for resolution
+    All custom exceptions should inherit from this class.
     """
     
     def __init__(
-        self,
-        message: str,
+        self, 
+        message: str, 
         details: dict[str, Any] | None = None,
-        error_code: str | None = None,
-        suggestion: str | None = None,
-    ):
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize the exception.
+        
+        Args:
+            message: Human-readable error message
+            details: Optional dictionary with additional context
+            **kwargs: Additional key-value pairs to include in details
+        """
+        super().__init__(message)
         self.message = message
         self.details = details or {}
-        self.error_code = error_code or self._default_error_code()
-        self.suggestion = suggestion
-        super().__init__(self.message)
+        self.details.update(kwargs)
     
-    def _default_error_code(self) -> str:
-        """Generate default error code from class name."""
-        # Convert CamelCase to SCREAMING_SNAKE_CASE
-        name = self.__class__.__name__
-        result = []
-        for i, char in enumerate(name):
-            if char.isupper() and i > 0:
-                result.append("_")
-            result.append(char.upper())
-        return "".join(result).replace("_ERROR", "")
+    @property
+    def error_type(self) -> str:
+        """Get the exception class name."""
+        return self.__class__.__name__
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert exception to dictionary for JSON serialization."""
+        """
+        Convert exception to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary with error_type, message, and details
+        """
         return {
-            "error_type": self.__class__.__name__,
-            "error_code": self.error_code,
+            "error_type": self.error_type,
             "message": self.message,
             "details": self.details,
-            "suggestion": self.suggestion,
         }
     
-    def __str__(self) -> str:
-        """Format error message with details."""
-        parts = [self.message]
+    def to_json(self) -> str:
+        """
+        Convert exception to JSON string.
+        
+        Returns:
+            JSON representation of the error
+        """
+        return json.dumps(self.to_dict(), indent=2, default=str)
+    
+    def __repr__(self) -> str:
         if self.details:
-            details_str = ", ".join(f"{k}={v}" for k, v in self.details.items())
-            parts.append(f"Details: {details_str}")
-        if self.suggestion:
-            parts.append(f"Suggestion: {self.suggestion}")
-        return " | ".join(parts)
+            return f"{self.error_type}({self.message!r}, details={self.details!r})"
+        return f"{self.error_type}({self.message!r})"
 
 
 # ============================================================================
@@ -78,96 +91,106 @@ class FinAnalystError(Exception):
 
 class CalculationError(FinAnalystError):
     """
-    Raised when a financial calculation cannot be completed.
+    Base exception for calculation-related errors.
     
-    This covers general calculation failures that aren't more specifically
-    categorized (e.g., not division by zero, not invalid input).
+    Raised when a financial calculation cannot be completed
+    due to mathematical issues or invalid inputs.
     """
     
     def __init__(
         self,
         message: str,
         metric_name: str | None = None,
-        details: dict[str, Any] | None = None,
-        suggestion: str | None = None,
-    ):
-        details = details or {}
+        formula: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize calculation error.
+        
+        Args:
+            message: Error description
+            metric_name: Name of the metric being calculated
+            formula: The formula that failed
+            **kwargs: Additional context
+        """
+        details = kwargs
         if metric_name:
             details["metric_name"] = metric_name
-        super().__init__(
-            message=message,
-            details=details,
-            error_code="CALC_FAILED",
-            suggestion=suggestion or "Check input values and try again",
-        )
-        self.metric_name = metric_name
+        if formula:
+            details["formula"] = formula
+        super().__init__(message, details=details)
 
 
 class DivisionByZeroError(CalculationError):
     """
-    Raised when division by zero is attempted in a calculation.
+    Raised when a calculation would result in division by zero.
     
-    This is a specific case of CalculationError that provides
-    context about which values caused the issue.
+    Includes information about the numerator and denominator
+    to aid in debugging data issues.
     """
     
     def __init__(
         self,
         numerator: Any,
-        denominator_name: str = "denominator",
+        denominator: Any,
         metric_name: str | None = None,
-    ):
-        message = f"Cannot divide {numerator} by zero ({denominator_name} is zero)"
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize division by zero error.
+        
+        Args:
+            numerator: The dividend value
+            denominator: The divisor (zero)
+            metric_name: Name of the metric being calculated
+            **kwargs: Additional context
+        """
+        message = f"Cannot divide {numerator} by zero"
         super().__init__(
-            message=message,
+            message,
             metric_name=metric_name,
-            details={
-                "numerator": numerator,
-                "denominator_name": denominator_name,
-            },
-            suggestion=f"Ensure {denominator_name} is non-zero before calculation",
+            numerator=numerator,
+            denominator=denominator,
+            **kwargs
         )
-        self.error_code = "DIVISION_BY_ZERO"
 
 
 class InvalidInputError(CalculationError):
     """
-    Raised when input values are invalid for the requested calculation.
+    Raised when input values are invalid for calculation.
     
     Examples:
-    - Negative values where only positive are valid
-    - Non-numeric values where numbers are required
-    - Missing required inputs
+    - Negative values where positive required
+    - Wrong data types
+    - Values outside acceptable ranges
     """
     
     def __init__(
         self,
         message: str,
-        field_name: str | None = None,
-        actual_value: Any = None,
+        parameter_name: str | None = None,
+        received_value: Any = None,
         expected: str | None = None,
-    ):
-        details = {}
-        if field_name:
-            details["field_name"] = field_name
-        if actual_value is not None:
-            details["actual_value"] = actual_value
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize invalid input error.
+        
+        Args:
+            message: Error description
+            parameter_name: Name of the invalid parameter
+            received_value: The value that was received
+            expected: Description of what was expected
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if parameter_name:
+            details["parameter_name"] = parameter_name
+        if received_value is not None:
+            details["received_value"] = received_value
         if expected:
             details["expected"] = expected
-        
-        suggestion = None
-        if expected:
-            suggestion = f"Provide a value that is: {expected}"
-        
-        super().__init__(
-            message=message,
-            details=details,
-            suggestion=suggestion,
-        )
-        self.error_code = "INVALID_INPUT"
-        self.field_name = field_name
-        self.actual_value = actual_value
-        self.expected = expected
+        super().__init__(message, **details)
 
 
 # ============================================================================
@@ -176,279 +199,374 @@ class InvalidInputError(CalculationError):
 
 class ValidationError(FinAnalystError):
     """
-    Raised when data validation fails.
+    Base exception for validation-related errors.
     
-    This covers schema validation, completeness checks, and
-    data quality issues.
+    Raised when data fails validation checks.
     """
     
     def __init__(
         self,
         message: str,
-        field_errors: dict[str, str] | None = None,
-        missing_fields: list[str] | None = None,
-        details: dict[str, Any] | None = None,
-    ):
-        details = details or {}
-        if field_errors:
-            details["field_errors"] = field_errors
-        if missing_fields:
-            details["missing_fields"] = missing_fields
+        field: str | None = None,
+        validation_type: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize validation error.
         
-        suggestion = None
-        if missing_fields:
-            suggestion = f"Provide the following fields: {', '.join(missing_fields)}"
-        
-        super().__init__(
-            message=message,
-            details=details,
-            error_code="VALIDATION_FAILED",
-            suggestion=suggestion,
-        )
-        self.field_errors = field_errors or {}
-        self.missing_fields = missing_fields or []
+        Args:
+            message: Error description
+            field: The field that failed validation
+            validation_type: Type of validation that failed
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if field:
+            details["field"] = field
+        if validation_type:
+            details["validation_type"] = validation_type
+        super().__init__(message, details=details)
 
 
-class SchemaValidationError(ValidationError):
-    """Raised when data doesn't conform to expected schema."""
+class SchemaError(ValidationError):
+    """
+    Raised when data doesn't conform to expected schema.
+    
+    Typically occurs during Pydantic model validation.
+    """
     
     def __init__(
         self,
         message: str,
-        schema_name: str | None = None,
-        field_errors: dict[str, str] | None = None,
-    ):
+        field: str | None = None,
+        expected_type: str | None = None,
+        received_type: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize schema error.
+        
+        Args:
+            message: Error description
+            field: The field with schema error
+            expected_type: Expected data type
+            received_type: Actual data type received
+            **kwargs: Additional context
+        """
         super().__init__(
-            message=message,
-            field_errors=field_errors,
-            details={"schema_name": schema_name} if schema_name else None,
+            message,
+            field=field,
+            validation_type="schema",
+            expected_type=expected_type,
+            received_type=received_type,
+            **kwargs
         )
-        self.error_code = "SCHEMA_INVALID"
-        self.schema_name = schema_name
 
 
-class DataCompletenessError(ValidationError):
-    """Raised when required data is missing for an analysis."""
-    
-    def __init__(
-        self,
-        analysis_type: str,
-        missing_fields: list[str],
-    ):
-        message = (
-            f"Insufficient data for {analysis_type} analysis. "
-            f"Missing: {', '.join(missing_fields)}"
-        )
-        super().__init__(
-            message=message,
-            missing_fields=missing_fields,
-            details={"analysis_type": analysis_type},
-        )
-        self.error_code = "DATA_INCOMPLETE"
-        self.analysis_type = analysis_type
-
-
-# ============================================================================
-# RECONCILIATION ERRORS
-# ============================================================================
-
-class ReconciliationError(FinAnalystError):
+class ReconciliationError(ValidationError):
     """
     Raised when cross-statement reconciliation fails.
     
-    This indicates an inconsistency between related values
-    across different financial statements.
+    Indicates that values that should match across statements
+    are inconsistent beyond acceptable tolerance.
     """
     
     def __init__(
         self,
         message: str,
         check_name: str,
-        expected_value: Any,
-        actual_value: Any,
+        value_a: Any,
+        source_a: str,
+        value_b: Any,
+        source_b: str,
         difference: Any = None,
         tolerance: float | None = None,
-    ):
-        details = {
-            "check_name": check_name,
-            "expected_value": expected_value,
-            "actual_value": actual_value,
-        }
-        if difference is not None:
-            details["difference"] = difference
-        if tolerance is not None:
-            details["tolerance_used"] = tolerance
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize reconciliation error.
         
+        Args:
+            message: Error description
+            check_name: Name of the reconciliation check
+            value_a: First value
+            source_a: Source of first value (e.g., "Income Statement")
+            value_b: Second value
+            source_b: Source of second value (e.g., "Cash Flow Statement")
+            difference: Calculated difference
+            tolerance: Tolerance threshold that was exceeded
+            **kwargs: Additional context
+        """
         super().__init__(
-            message=message,
-            details=details,
-            error_code="RECONCILIATION_FAILED",
-            suggestion="Verify data accuracy or confirm known discrepancy",
+            message,
+            validation_type="reconciliation",
+            check_name=check_name,
+            value_a=value_a,
+            source_a=source_a,
+            value_b=value_b,
+            source_b=source_b,
+            difference=difference,
+            tolerance=tolerance,
+            **kwargs
         )
-        self.check_name = check_name
-        self.expected_value = expected_value
-        self.actual_value = actual_value
 
 
-# ============================================================================
-# DATA PARSING ERRORS
-# ============================================================================
-
-class DataParsingError(FinAnalystError):
+class PlausibilityError(ValidationError):
     """
-    Raised when financial data cannot be parsed.
+    Raised when a calculated metric is outside plausible range.
     
-    This covers issues with raw data extraction from
-    PDFs, Excel files, or other sources.
+    Note: This is typically a warning, not an error, unless explicitly strict.
     """
     
     def __init__(
         self,
         message: str,
-        source_type: str | None = None,
-        source_location: str | None = None,
-        parse_error: str | None = None,
-    ):
-        details = {}
-        if source_type:
-            details["source_type"] = source_type
-        if source_location:
-            details["source_location"] = source_location
-        if parse_error:
-            details["parse_error"] = parse_error
+        metric_name: str,
+        value: Any,
+        expected_range: tuple[float, float],
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize plausibility error.
         
+        Args:
+            message: Error description
+            metric_name: Name of the metric
+            value: The implausible value
+            expected_range: Tuple of (min, max) expected values
+            **kwargs: Additional context
+        """
         super().__init__(
-            message=message,
-            details=details,
-            error_code="PARSE_FAILED",
-            suggestion="Check source format and try again",
+            message,
+            validation_type="plausibility",
+            metric_name=metric_name,
+            value=value,
+            expected_range=expected_range,
+            **kwargs
         )
-        self.source_type = source_type
 
 
 # ============================================================================
-# TOOL EXECUTION ERRORS
+# DATA ERRORS
 # ============================================================================
 
-class ToolExecutionError(FinAnalystError):
+class DataError(FinAnalystError):
     """
-    Raised when a tool execution fails.
+    Base exception for data-related errors.
     
-    This wraps errors that occur during tool dispatch and execution,
-    providing context about which tool failed and why.
+    Raised when there are issues with the input data itself.
+    """
+    pass
+
+
+class DataParsingError(DataError):
+    """
+    Raised when data cannot be parsed from input format.
+    
+    Examples:
+    - Invalid JSON/CSV structure
+    - Corrupted file data
+    - Encoding issues
     """
     
     def __init__(
         self,
         message: str,
-        tool_name: str,
-        parameters: dict[str, Any] | None = None,
-        original_error: Exception | None = None,
-    ):
-        details = {"tool_name": tool_name}
-        if parameters:
-            details["parameters"] = parameters
-        if original_error:
-            details["original_error"] = str(original_error)
-            details["original_error_type"] = type(original_error).__name__
+        source: str | None = None,
+        line_number: int | None = None,
+        raw_data: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize parsing error.
         
-        super().__init__(
-            message=message,
-            details=details,
-            error_code="TOOL_EXECUTION_FAILED",
-            suggestion="Check tool parameters and try again",
-        )
-        self.tool_name = tool_name
-        self.parameters = parameters
-        self.original_error = original_error
+        Args:
+            message: Error description
+            source: Source of the data (filename, URL, etc.)
+            line_number: Line number where error occurred
+            raw_data: Snippet of raw data that failed to parse
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if source:
+            details["source"] = source
+        if line_number is not None:
+            details["line_number"] = line_number
+        if raw_data:
+            # Truncate if too long
+            details["raw_data"] = raw_data[:500] if len(raw_data) > 500 else raw_data
+        super().__init__(message, details=details)
 
 
-class UnknownToolError(ToolExecutionError):
-    """Raised when an unknown tool is requested."""
+class MissingDataError(DataError):
+    """
+    Raised when required data is missing.
+    
+    Includes information about what data is needed and
+    which analysis requires it.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        missing_fields: list[str] | None = None,
+        required_for: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize missing data error.
+        
+        Args:
+            message: Error description
+            missing_fields: List of missing field names
+            required_for: What analysis/calculation requires the data
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if missing_fields:
+            details["missing_fields"] = missing_fields
+        if required_for:
+            details["required_for"] = required_for
+        super().__init__(message, details=details)
+
+
+# ============================================================================
+# TOOL ERRORS
+# ============================================================================
+
+class ToolError(FinAnalystError):
+    """
+    Base exception for tool-related errors.
+    
+    Raised when issues occur during tool execution.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        tool_name: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool error.
+        
+        Args:
+            message: Error description
+            tool_name: Name of the tool
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if tool_name:
+            details["tool_name"] = tool_name
+        super().__init__(message, details=details)
+
+
+class ToolNotFoundError(ToolError):
+    """
+    Raised when a requested tool does not exist.
+    
+    Includes suggestions for similar tool names if available.
+    """
     
     def __init__(
         self,
         tool_name: str,
         available_tools: list[str] | None = None,
-    ):
-        message = f"Unknown tool: '{tool_name}'"
+        suggestions: list[str] | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool not found error.
+        
+        Args:
+            tool_name: Name of the tool that wasn't found
+            available_tools: List of all available tool names
+            suggestions: Similar tool names as suggestions
+            **kwargs: Additional context
+        """
+        message = f"Tool '{tool_name}' not found"
+        if suggestions:
+            message += f". Did you mean: {', '.join(suggestions)}?"
+        
         super().__init__(
-            message=message,
+            message,
             tool_name=tool_name,
+            available_tools=available_tools,
+            suggestions=suggestions,
+            **kwargs
         )
-        self.error_code = "UNKNOWN_TOOL"
-        if available_tools:
-            self.details["available_tools"] = available_tools[:10]  # Limit list size
-            self.suggestion = f"Use one of the available tools. Similar: {self._find_similar(tool_name, available_tools)}"
+
+
+class ToolExecutionError(ToolError):
+    """
+    Raised when a tool fails during execution.
     
-    def _find_similar(self, name: str, available: list[str]) -> list[str]:
-        """Find tools with similar names."""
-        name_lower = name.lower()
-        similar = [t for t in available if name_lower in t.lower() or t.lower() in name_lower]
-        return similar[:3] if similar else available[:3]
+    Wraps the original exception with tool context.
+    """
+    
+    def __init__(
+        self,
+        tool_name: str,
+        original_error: Exception,
+        parameters: dict[str, Any] | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool execution error.
+        
+        Args:
+            tool_name: Name of the tool that failed
+            original_error: The original exception that was raised
+            parameters: Parameters that were passed to the tool
+            **kwargs: Additional context
+        """
+        message = f"Tool '{tool_name}' failed: {str(original_error)}"
+        
+        super().__init__(
+            message,
+            tool_name=tool_name,
+            original_error_type=type(original_error).__name__,
+            original_error_message=str(original_error),
+            parameters=parameters,
+            **kwargs
+        )
+        self.original_error = original_error
 
 
-class ToolParameterError(ToolExecutionError):
-    """Raised when tool parameters are invalid."""
+class ToolParameterError(ToolError):
+    """
+    Raised when tool parameters are invalid.
+    
+    Provides details about which parameters are wrong and why.
+    """
     
     def __init__(
         self,
         tool_name: str,
         parameter_name: str,
         message: str,
+        received_value: Any = None,
         expected_type: str | None = None,
-        actual_value: Any = None,
-    ):
-        details = {
-            "parameter_name": parameter_name,
-        }
-        if expected_type:
-            details["expected_type"] = expected_type
-        if actual_value is not None:
-            details["actual_value"] = str(actual_value)[:100]  # Truncate long values
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool parameter error.
+        
+        Args:
+            tool_name: Name of the tool
+            parameter_name: Name of the invalid parameter
+            message: Description of what's wrong
+            received_value: The invalid value received
+            expected_type: What type was expected
+            **kwargs: Additional context
+        """
+        full_message = f"Invalid parameter '{parameter_name}' for tool '{tool_name}': {message}"
         
         super().__init__(
-            message=f"Parameter '{parameter_name}': {message}",
+            full_message,
             tool_name=tool_name,
-            parameters=details,
+            parameter_name=parameter_name,
+            received_value=received_value,
+            expected_type=expected_type,
+            **kwargs
         )
-        self.error_code = "INVALID_PARAMETER"
-        self.parameter_name = parameter_name
-
-
-# ============================================================================
-# PLAUSIBILITY ERRORS
-# ============================================================================
-
-class PlausibilityError(FinAnalystError):
-    """
-    Raised when a calculated value fails plausibility checks.
-    
-    Note: This is typically a warning, not a blocking error.
-    Only raised when explicitly requested to enforce plausibility.
-    """
-    
-    def __init__(
-        self,
-        metric_name: str,
-        value: float,
-        plausible_range: tuple[float, float],
-    ):
-        message = (
-            f"{metric_name} value of {value:.2f} is outside the plausible range "
-            f"({plausible_range[0]:.2f} to {plausible_range[1]:.2f})"
-        )
-        super().__init__(
-            message=message,
-            details={
-                "metric_name": metric_name,
-                "value": value,
-                "min_plausible": plausible_range[0],
-                "max_plausible": plausible_range[1],
-            },
-            error_code="IMPLAUSIBLE_VALUE",
-            suggestion="Verify input data accuracy. This may indicate a data entry error.",
-        )
-        self.metric_name = metric_name
-        self.value = value
-        self.plausible_range = plausible_range

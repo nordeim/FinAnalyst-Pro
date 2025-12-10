@@ -768,4 +768,1123 @@ Before I proceed with implementation, please confirm:
 
 ---
 
-**Awaiting your confirmation to proceed with full implementation of all Phase 1 files.**
+Phase 1 Implementation: Complete Core Infrastructure
+Execution Status
+I will now implement all 18 files in dependency order. Each file is complete, production-ready, and follows the detailed checklist from the plan.
+
+File 1 of 18: finanalyst_tools/config.py
+Python
+
+# finanalyst_tools/config.py
+"""
+Configuration and constants for FinAnalyst-Pro tools.
+
+This module provides centralized configuration for:
+- Decimal precision and rounding modes
+- Plausibility ranges for financial metrics
+- Reconciliation tolerances
+- Currency settings (SGD default)
+- Analysis parameters
+
+All constants use Final for immutability and are fully typed.
+"""
+
+from __future__ import annotations
+
+from decimal import ROUND_HALF_UP, ROUND_HALF_EVEN
+from enum import Enum
+from typing import Final
+
+
+# ============================================================================
+# PRECISION & ROUNDING CONFIGURATION
+# ============================================================================
+
+class RoundingMode(str, Enum):
+    """
+    Supported rounding modes for financial calculations.
+    
+    STANDARD: Round half up (0.5 → 1) - Most common in financial reporting
+    BANKERS: Round half to even (banker's rounding) - Reduces cumulative bias
+    """
+    STANDARD = "ROUND_HALF_UP"
+    BANKERS = "ROUND_HALF_EVEN"
+    
+    def get_decimal_rounding(self) -> str:
+        """Get the decimal module rounding constant."""
+        if self == RoundingMode.STANDARD:
+            return ROUND_HALF_UP
+        return ROUND_HALF_EVEN
+
+
+# Default decimal precision for different contexts
+DECIMAL_PLACES: Final[dict[str, int]] = {
+    "currency": 2,       # Monetary values: $1,234.56
+    "percentage": 2,     # Percentages: 12.34%
+    "ratio": 4,          # Financial ratios: 1.5432
+    "shares": 0,         # Share counts: whole numbers
+    "growth_rate": 4,    # Growth rates: 0.1234 (12.34%)
+    "turnover": 2,       # Turnover ratios: 4.56x
+    "days": 0,           # Day counts: whole numbers
+}
+
+# Default rounding mode for all calculations
+DEFAULT_ROUNDING: Final[RoundingMode] = RoundingMode.STANDARD
+
+
+# ============================================================================
+# PLAUSIBILITY THRESHOLDS
+# ============================================================================
+
+class PlausibilityRanges:
+    """
+    Acceptable ranges for financial ratios and metrics.
+    
+    Values outside these ranges trigger warnings (not errors) during analysis.
+    Ranges are intentionally wide to accommodate various industries and situations
+    while catching obvious data errors.
+    
+    All percentage values are expressed as actual percentages (e.g., 20.0 = 20%).
+    All ratios are expressed as decimal values (e.g., 1.5 = 1.5x).
+    """
+    
+    # -------------------------------------------------------------------------
+    # PROFITABILITY METRICS (percentages)
+    # -------------------------------------------------------------------------
+    
+    # Gross Margin: (Revenue - COGS) / Revenue
+    # Range: Can be negative (selling below cost) to very high (software/services)
+    GROSS_MARGIN: Final[tuple[float, float]] = (-50.0, 95.0)
+    
+    # Operating Margin: Operating Income / Revenue
+    # Range: Negative (losses) to moderate (even best companies rarely exceed 50%)
+    OPERATING_MARGIN: Final[tuple[float, float]] = (-100.0, 60.0)
+    
+    # Net Margin: Net Income / Revenue
+    # Range: Deep losses possible; >50% is extremely rare and suspicious
+    NET_MARGIN: Final[tuple[float, float]] = (-200.0, 50.0)
+    
+    # EBITDA Margin: EBITDA / Revenue
+    EBITDA_MARGIN: Final[tuple[float, float]] = (-50.0, 70.0)
+    
+    # Return on Assets: Net Income / Average Total Assets
+    # Range: Negative possible; >40% is exceptional
+    ROA: Final[tuple[float, float]] = (-50.0, 40.0)
+    
+    # Return on Equity: Net Income / Average Shareholders' Equity
+    # Range: Can be extreme with low equity; >60% is very high
+    ROE: Final[tuple[float, float]] = (-100.0, 80.0)
+    
+    # Return on Capital Employed
+    ROCE: Final[tuple[float, float]] = (-50.0, 60.0)
+    
+    # -------------------------------------------------------------------------
+    # LIQUIDITY METRICS (ratios)
+    # -------------------------------------------------------------------------
+    
+    # Current Ratio: Current Assets / Current Liabilities
+    # Range: Below 1.0 indicates liquidity issues; very high may indicate inefficiency
+    CURRENT_RATIO: Final[tuple[float, float]] = (0.1, 10.0)
+    
+    # Quick Ratio: (Current Assets - Inventory) / Current Liabilities
+    QUICK_RATIO: Final[tuple[float, float]] = (0.05, 8.0)
+    
+    # Cash Ratio: Cash / Current Liabilities
+    CASH_RATIO: Final[tuple[float, float]] = (0.0, 5.0)
+    
+    # -------------------------------------------------------------------------
+    # SOLVENCY METRICS (ratios)
+    # -------------------------------------------------------------------------
+    
+    # Debt to Equity: Total Liabilities / Shareholders' Equity
+    # Range: 0 (no debt) to very high (highly leveraged)
+    DEBT_TO_EQUITY: Final[tuple[float, float]] = (0.0, 10.0)
+    
+    # Debt to Assets: Total Liabilities / Total Assets
+    # Range: 0 to slightly above 1.0 (insolvent but possible)
+    DEBT_TO_ASSETS: Final[tuple[float, float]] = (0.0, 1.5)
+    
+    # Interest Coverage: EBIT / Interest Expense
+    # Range: Negative (not covering) to very high (minimal debt)
+    INTEREST_COVERAGE: Final[tuple[float, float]] = (-10.0, 100.0)
+    
+    # Equity Ratio: Shareholders' Equity / Total Assets
+    EQUITY_RATIO: Final[tuple[float, float]] = (-0.5, 1.0)
+    
+    # -------------------------------------------------------------------------
+    # EFFICIENCY METRICS (ratios/turnover)
+    # -------------------------------------------------------------------------
+    
+    # Asset Turnover: Revenue / Average Total Assets
+    ASSET_TURNOVER: Final[tuple[float, float]] = (0.1, 5.0)
+    
+    # Inventory Turnover: COGS / Average Inventory
+    INVENTORY_TURNOVER: Final[tuple[float, float]] = (0.5, 50.0)
+    
+    # Receivables Turnover: Revenue / Average Accounts Receivable
+    RECEIVABLES_TURNOVER: Final[tuple[float, float]] = (1.0, 50.0)
+    
+    # Payables Turnover: COGS / Average Accounts Payable
+    PAYABLES_TURNOVER: Final[tuple[float, float]] = (1.0, 30.0)
+    
+    # Fixed Asset Turnover: Revenue / Average Fixed Assets
+    FIXED_ASSET_TURNOVER: Final[tuple[float, float]] = (0.1, 20.0)
+    
+    # -------------------------------------------------------------------------
+    # GROWTH METRICS (percentages)
+    # -------------------------------------------------------------------------
+    
+    # Revenue Growth: (Current - Prior) / Prior
+    REVENUE_GROWTH: Final[tuple[float, float]] = (-80.0, 500.0)
+    
+    # Net Income Growth
+    NET_INCOME_GROWTH: Final[tuple[float, float]] = (-500.0, 1000.0)
+    
+    # Asset Growth
+    ASSET_GROWTH: Final[tuple[float, float]] = (-50.0, 200.0)
+    
+    @classmethod
+    def get_range(cls, metric_name: str) -> tuple[float, float] | None:
+        """
+        Get plausibility range for a metric by name.
+        
+        Args:
+            metric_name: Name of the metric (case-insensitive, underscores/spaces flexible)
+            
+        Returns:
+            Tuple of (min, max) or None if metric not found
+        """
+        # Normalize the metric name
+        normalized = metric_name.upper().replace(" ", "_").replace("-", "_")
+        return getattr(cls, normalized, None)
+    
+    @classmethod
+    def is_plausible(cls, metric_name: str, value: float) -> bool:
+        """
+        Check if a metric value is within plausible range.
+        
+        Args:
+            metric_name: Name of the metric
+            value: The value to check
+            
+        Returns:
+            True if within range or range not defined, False otherwise
+        """
+        range_tuple = cls.get_range(metric_name)
+        if range_tuple is None:
+            return True  # No range defined = assume plausible
+        return range_tuple[0] <= value <= range_tuple[1]
+    
+    @classmethod
+    def get_assessment(cls, metric_name: str, value: float) -> str:
+        """
+        Get a human-readable assessment of a metric value.
+        
+        Args:
+            metric_name: Name of the metric
+            value: The value to assess
+            
+        Returns:
+            Assessment string: "within_range", "below_range", "above_range", or "unknown"
+        """
+        range_tuple = cls.get_range(metric_name)
+        if range_tuple is None:
+            return "unknown"
+        
+        if value < range_tuple[0]:
+            return "below_range"
+        elif value > range_tuple[1]:
+            return "above_range"
+        return "within_range"
+
+
+# ============================================================================
+# RECONCILIATION TOLERANCES
+# ============================================================================
+
+class ReconciliationTolerances:
+    """
+    Acceptable tolerance levels for cross-statement reconciliation.
+    
+    Expressed as a proportion (0.01 = 1%) of the larger value being compared.
+    Different tolerance levels for different reconciliation contexts.
+    """
+    
+    # Strict: For values that should match exactly (e.g., net income across statements)
+    STRICT: Final[float] = 0.001  # 0.1%
+    
+    # Normal: For values that may have minor rounding differences
+    NORMAL: Final[float] = 0.01  # 1%
+    
+    # Loose: For derived values that may have compounding differences
+    LOOSE: Final[float] = 0.05  # 5%
+    
+    # Default tolerance when not specified
+    DEFAULT: Final[float] = NORMAL
+    
+    @classmethod
+    def get_tolerance(cls, level: str) -> float:
+        """
+        Get tolerance value by level name.
+        
+        Args:
+            level: One of "strict", "normal", "loose"
+            
+        Returns:
+            Tolerance as a proportion
+        """
+        level_upper = level.upper()
+        if level_upper == "STRICT":
+            return cls.STRICT
+        elif level_upper == "LOOSE":
+            return cls.LOOSE
+        return cls.NORMAL
+    
+    @classmethod
+    def is_within_tolerance(
+        cls, 
+        value_a: float, 
+        value_b: float, 
+        tolerance: float | None = None
+    ) -> bool:
+        """
+        Check if two values are within tolerance of each other.
+        
+        Args:
+            value_a: First value
+            value_b: Second value
+            tolerance: Tolerance level (proportion). Uses DEFAULT if not specified.
+            
+        Returns:
+            True if values are within tolerance
+        """
+        if tolerance is None:
+            tolerance = cls.DEFAULT
+        
+        if value_a == 0 and value_b == 0:
+            return True
+        
+        # Use the larger absolute value as the base
+        base = max(abs(value_a), abs(value_b))
+        if base == 0:
+            return True
+        
+        difference = abs(value_a - value_b)
+        return (difference / base) <= tolerance
+
+
+# ============================================================================
+# CURRENCY CONFIGURATION
+# ============================================================================
+
+# Default currency for Singapore SMB context
+DEFAULT_CURRENCY: Final[str] = "SGD"
+
+# Supported currencies for the system
+SUPPORTED_CURRENCIES: Final[frozenset[str]] = frozenset({
+    "SGD",  # Singapore Dollar (primary)
+    "USD",  # US Dollar
+    "EUR",  # Euro
+    "GBP",  # British Pound
+    "JPY",  # Japanese Yen
+    "CNY",  # Chinese Yuan
+    "HKD",  # Hong Kong Dollar
+    "AUD",  # Australian Dollar
+    "MYR",  # Malaysian Ringgit
+    "IDR",  # Indonesian Rupiah
+    "THB",  # Thai Baht
+    "INR",  # Indian Rupee
+    "KRW",  # South Korean Won
+    "NZD",  # New Zealand Dollar
+    "PHP",  # Philippine Peso
+    "VND",  # Vietnamese Dong
+})
+
+
+# ============================================================================
+# ANALYSIS CONFIGURATION
+# ============================================================================
+
+# Minimum number of periods required for meaningful trend analysis
+MIN_PERIODS_FOR_TREND: Final[int] = 3
+
+# Default number of periods for forecasting
+DEFAULT_FORECAST_PERIODS: Final[int] = 3
+
+# Maximum number of periods to include in analysis
+MAX_ANALYSIS_PERIODS: Final[int] = 10
+
+# Days in year for turnover/day calculations
+DAYS_IN_YEAR: Final[int] = 365
+
+# Days in month (average) for monthly calculations
+DAYS_IN_MONTH: Final[float] = 30.44
+
+# Months in year
+MONTHS_IN_YEAR: Final[int] = 12
+
+
+# ============================================================================
+# VALIDATION CONFIGURATION
+# ============================================================================
+
+# Maximum absolute value for any monetary amount (sanity check)
+MAX_MONETARY_VALUE: Final[float] = 1e15  # 1 quadrillion
+
+# Minimum value that's considered effectively zero
+ZERO_THRESHOLD: Final[float] = 1e-10
+
+
+# ============================================================================
+# DISPLAY CONFIGURATION
+# ============================================================================
+
+# Symbols for trend indication
+TREND_SYMBOLS: Final[dict[str, str]] = {
+    "increasing": "↑",
+    "decreasing": "↓",
+    "stable": "→",
+    "volatile": "↕",
+}
+
+# Symbols for status indication
+STATUS_SYMBOLS: Final[dict[str, str]] = {
+    "good": "✅",
+    "warning": "⚠️",
+    "error": "❌",
+    "info": "ℹ️",
+    "unknown": "❓",
+}
+
+# Large number suffixes
+LARGE_NUMBER_SUFFIXES: Final[list[tuple[float, str]]] = [
+    (1e12, "T"),   # Trillion
+    (1e9, "B"),    # Billion
+    (1e6, "M"),    # Million
+    (1e3, "K"),    # Thousand
+]
+File 2 of 18: finanalyst_tools/exceptions.py
+Python
+
+# finanalyst_tools/exceptions.py
+"""
+Custom exception hierarchy for FinAnalyst-Pro tools.
+
+Provides specific exception types for different error categories:
+- Calculation errors (arithmetic, division by zero, invalid inputs)
+- Validation errors (schema, reconciliation, plausibility)
+- Data errors (parsing, missing data)
+- Tool errors (not found, execution failure)
+
+All exceptions support serialization to dict/JSON for structured error handling.
+"""
+
+from __future__ import annotations
+
+import json
+from typing import Any
+
+
+# ============================================================================
+# BASE EXCEPTION
+# ============================================================================
+
+class FinAnalystError(Exception):
+    """
+    Base exception for all FinAnalyst-Pro errors.
+    
+    Provides common functionality:
+    - Message storage
+    - Optional details dictionary for context
+    - JSON serialization support
+    
+    All custom exceptions should inherit from this class.
+    """
+    
+    def __init__(
+        self, 
+        message: str, 
+        details: dict[str, Any] | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize the exception.
+        
+        Args:
+            message: Human-readable error message
+            details: Optional dictionary with additional context
+            **kwargs: Additional key-value pairs to include in details
+        """
+        super().__init__(message)
+        self.message = message
+        self.details = details or {}
+        self.details.update(kwargs)
+    
+    @property
+    def error_type(self) -> str:
+        """Get the exception class name."""
+        return self.__class__.__name__
+    
+    def to_dict(self) -> dict[str, Any]:
+        """
+        Convert exception to dictionary for JSON serialization.
+        
+        Returns:
+            Dictionary with error_type, message, and details
+        """
+        return {
+            "error_type": self.error_type,
+            "message": self.message,
+            "details": self.details,
+        }
+    
+    def to_json(self) -> str:
+        """
+        Convert exception to JSON string.
+        
+        Returns:
+            JSON representation of the error
+        """
+        return json.dumps(self.to_dict(), indent=2, default=str)
+    
+    def __repr__(self) -> str:
+        if self.details:
+            return f"{self.error_type}({self.message!r}, details={self.details!r})"
+        return f"{self.error_type}({self.message!r})"
+
+
+# ============================================================================
+# CALCULATION ERRORS
+# ============================================================================
+
+class CalculationError(FinAnalystError):
+    """
+    Base exception for calculation-related errors.
+    
+    Raised when a financial calculation cannot be completed
+    due to mathematical issues or invalid inputs.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        metric_name: str | None = None,
+        formula: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize calculation error.
+        
+        Args:
+            message: Error description
+            metric_name: Name of the metric being calculated
+            formula: The formula that failed
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if metric_name:
+            details["metric_name"] = metric_name
+        if formula:
+            details["formula"] = formula
+        super().__init__(message, details=details)
+
+
+class DivisionByZeroError(CalculationError):
+    """
+    Raised when a calculation would result in division by zero.
+    
+    Includes information about the numerator and denominator
+    to aid in debugging data issues.
+    """
+    
+    def __init__(
+        self,
+        numerator: Any,
+        denominator: Any,
+        metric_name: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize division by zero error.
+        
+        Args:
+            numerator: The dividend value
+            denominator: The divisor (zero)
+            metric_name: Name of the metric being calculated
+            **kwargs: Additional context
+        """
+        message = f"Cannot divide {numerator} by zero"
+        super().__init__(
+            message,
+            metric_name=metric_name,
+            numerator=numerator,
+            denominator=denominator,
+            **kwargs
+        )
+
+
+class InvalidInputError(CalculationError):
+    """
+    Raised when input values are invalid for calculation.
+    
+    Examples:
+    - Negative values where positive required
+    - Wrong data types
+    - Values outside acceptable ranges
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        parameter_name: str | None = None,
+        received_value: Any = None,
+        expected: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize invalid input error.
+        
+        Args:
+            message: Error description
+            parameter_name: Name of the invalid parameter
+            received_value: The value that was received
+            expected: Description of what was expected
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if parameter_name:
+            details["parameter_name"] = parameter_name
+        if received_value is not None:
+            details["received_value"] = received_value
+        if expected:
+            details["expected"] = expected
+        super().__init__(message, **details)
+
+
+# ============================================================================
+# VALIDATION ERRORS
+# ============================================================================
+
+class ValidationError(FinAnalystError):
+    """
+    Base exception for validation-related errors.
+    
+    Raised when data fails validation checks.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        field: str | None = None,
+        validation_type: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize validation error.
+        
+        Args:
+            message: Error description
+            field: The field that failed validation
+            validation_type: Type of validation that failed
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if field:
+            details["field"] = field
+        if validation_type:
+            details["validation_type"] = validation_type
+        super().__init__(message, details=details)
+
+
+class SchemaError(ValidationError):
+    """
+    Raised when data doesn't conform to expected schema.
+    
+    Typically occurs during Pydantic model validation.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        field: str | None = None,
+        expected_type: str | None = None,
+        received_type: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize schema error.
+        
+        Args:
+            message: Error description
+            field: The field with schema error
+            expected_type: Expected data type
+            received_type: Actual data type received
+            **kwargs: Additional context
+        """
+        super().__init__(
+            message,
+            field=field,
+            validation_type="schema",
+            expected_type=expected_type,
+            received_type=received_type,
+            **kwargs
+        )
+
+
+class ReconciliationError(ValidationError):
+    """
+    Raised when cross-statement reconciliation fails.
+    
+    Indicates that values that should match across statements
+    are inconsistent beyond acceptable tolerance.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        check_name: str,
+        value_a: Any,
+        source_a: str,
+        value_b: Any,
+        source_b: str,
+        difference: Any = None,
+        tolerance: float | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize reconciliation error.
+        
+        Args:
+            message: Error description
+            check_name: Name of the reconciliation check
+            value_a: First value
+            source_a: Source of first value (e.g., "Income Statement")
+            value_b: Second value
+            source_b: Source of second value (e.g., "Cash Flow Statement")
+            difference: Calculated difference
+            tolerance: Tolerance threshold that was exceeded
+            **kwargs: Additional context
+        """
+        super().__init__(
+            message,
+            validation_type="reconciliation",
+            check_name=check_name,
+            value_a=value_a,
+            source_a=source_a,
+            value_b=value_b,
+            source_b=source_b,
+            difference=difference,
+            tolerance=tolerance,
+            **kwargs
+        )
+
+
+class PlausibilityError(ValidationError):
+    """
+    Raised when a calculated metric is outside plausible range.
+    
+    Note: This is typically a warning, not an error, unless explicitly strict.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        metric_name: str,
+        value: Any,
+        expected_range: tuple[float, float],
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize plausibility error.
+        
+        Args:
+            message: Error description
+            metric_name: Name of the metric
+            value: The implausible value
+            expected_range: Tuple of (min, max) expected values
+            **kwargs: Additional context
+        """
+        super().__init__(
+            message,
+            validation_type="plausibility",
+            metric_name=metric_name,
+            value=value,
+            expected_range=expected_range,
+            **kwargs
+        )
+
+
+# ============================================================================
+# DATA ERRORS
+# ============================================================================
+
+class DataError(FinAnalystError):
+    """
+    Base exception for data-related errors.
+    
+    Raised when there are issues with the input data itself.
+    """
+    pass
+
+
+class DataParsingError(DataError):
+    """
+    Raised when data cannot be parsed from input format.
+    
+    Examples:
+    - Invalid JSON/CSV structure
+    - Corrupted file data
+    - Encoding issues
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        source: str | None = None,
+        line_number: int | None = None,
+        raw_data: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize parsing error.
+        
+        Args:
+            message: Error description
+            source: Source of the data (filename, URL, etc.)
+            line_number: Line number where error occurred
+            raw_data: Snippet of raw data that failed to parse
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if source:
+            details["source"] = source
+        if line_number is not None:
+            details["line_number"] = line_number
+        if raw_data:
+            # Truncate if too long
+            details["raw_data"] = raw_data[:500] if len(raw_data) > 500 else raw_data
+        super().__init__(message, details=details)
+
+
+class MissingDataError(DataError):
+    """
+    Raised when required data is missing.
+    
+    Includes information about what data is needed and
+    which analysis requires it.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        missing_fields: list[str] | None = None,
+        required_for: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize missing data error.
+        
+        Args:
+            message: Error description
+            missing_fields: List of missing field names
+            required_for: What analysis/calculation requires the data
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if missing_fields:
+            details["missing_fields"] = missing_fields
+        if required_for:
+            details["required_for"] = required_for
+        super().__init__(message, details=details)
+
+
+# ============================================================================
+# TOOL ERRORS
+# ============================================================================
+
+class ToolError(FinAnalystError):
+    """
+    Base exception for tool-related errors.
+    
+    Raised when issues occur during tool execution.
+    """
+    
+    def __init__(
+        self,
+        message: str,
+        tool_name: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool error.
+        
+        Args:
+            message: Error description
+            tool_name: Name of the tool
+            **kwargs: Additional context
+        """
+        details = kwargs
+        if tool_name:
+            details["tool_name"] = tool_name
+        super().__init__(message, details=details)
+
+
+class ToolNotFoundError(ToolError):
+    """
+    Raised when a requested tool does not exist.
+    
+    Includes suggestions for similar tool names if available.
+    """
+    
+    def __init__(
+        self,
+        tool_name: str,
+        available_tools: list[str] | None = None,
+        suggestions: list[str] | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool not found error.
+        
+        Args:
+            tool_name: Name of the tool that wasn't found
+            available_tools: List of all available tool names
+            suggestions: Similar tool names as suggestions
+            **kwargs: Additional context
+        """
+        message = f"Tool '{tool_name}' not found"
+        if suggestions:
+            message += f". Did you mean: {', '.join(suggestions)}?"
+        
+        super().__init__(
+            message,
+            tool_name=tool_name,
+            available_tools=available_tools,
+            suggestions=suggestions,
+            **kwargs
+        )
+
+
+class ToolExecutionError(ToolError):
+    """
+    Raised when a tool fails during execution.
+    
+    Wraps the original exception with tool context.
+    """
+    
+    def __init__(
+        self,
+        tool_name: str,
+        original_error: Exception,
+        parameters: dict[str, Any] | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool execution error.
+        
+        Args:
+            tool_name: Name of the tool that failed
+            original_error: The original exception that was raised
+            parameters: Parameters that were passed to the tool
+            **kwargs: Additional context
+        """
+        message = f"Tool '{tool_name}' failed: {str(original_error)}"
+        
+        super().__init__(
+            message,
+            tool_name=tool_name,
+            original_error_type=type(original_error).__name__,
+            original_error_message=str(original_error),
+            parameters=parameters,
+            **kwargs
+        )
+        self.original_error = original_error
+
+
+class ToolParameterError(ToolError):
+    """
+    Raised when tool parameters are invalid.
+    
+    Provides details about which parameters are wrong and why.
+    """
+    
+    def __init__(
+        self,
+        tool_name: str,
+        parameter_name: str,
+        message: str,
+        received_value: Any = None,
+        expected_type: str | None = None,
+        **kwargs: Any
+    ) -> None:
+        """
+        Initialize tool parameter error.
+        
+        Args:
+            tool_name: Name of the tool
+            parameter_name: Name of the invalid parameter
+            message: Description of what's wrong
+            received_value: The invalid value received
+            expected_type: What type was expected
+            **kwargs: Additional context
+        """
+        full_message = f"Invalid parameter '{parameter_name}' for tool '{tool_name}': {message}"
+        
+        super().__init__(
+            full_message,
+            tool_name=tool_name,
+            parameter_name=parameter_name,
+            received_value=received_value,
+            expected_type=expected_type,
+            **kwargs
+        )
+File 3 of 18: finanalyst_tools/utils/__init__.py
+Python
+
+# finanalyst_tools/utils/__init__.py
+"""
+Utility functions for FinAnalyst-Pro tools.
+
+This module exports:
+- Math operations (safe division, decimal handling, statistics)
+- Formatting functions (numbers, currency, percentages)
+- Currency utilities (SGD-specific, GST calculations)
+"""
+
+from finanalyst_tools.utils.math_ops import (
+    to_decimal,
+    safe_divide,
+    round_decimal,
+    calculate_percentage,
+    calculate_growth_rate,
+    calculate_cagr,
+    calculate_average,
+    calculate_weighted_average,
+    calculate_variance,
+    calculate_std_dev,
+    calculate_min_max,
+    is_effectively_zero,
+    compare_values,
+)
+
+from finanalyst_tools.utils.formatting import (
+    format_number,
+    format_currency,
+    format_percentage,
+    format_ratio,
+    format_change,
+    format_large_number,
+    format_trend_indicator,
+    format_status_indicator,
+    format_markdown_table,
+    format_value_with_unit,
+)
+
+from finanalyst_tools.utils.currency import (
+    get_currency_symbol,
+    get_currency_decimals,
+    get_currency_name,
+    is_supported_currency,
+    format_sgd,
+    calculate_gst_exclusive,
+    calculate_gst_inclusive,
+    calculate_gst_amount,
+    is_sfrs_small_entity,
+    SGD_GST_RATE,
+    CURRENCY_INFO,
+)
+
+
+__all__ = [
+    # Math operations
+    "to_decimal",
+    "safe_divide",
+    "round_decimal",
+    "calculate_percentage",
+    "calculate_growth_rate",
+    "calculate_cagr",
+    "calculate_average",
+    "calculate_weighted_average",
+    "calculate_variance",
+    "calculate_std_dev",
+    "calculate_min_max",
+    "is_effectively_zero",
+    "compare_values",
+    # Formatting
+    "format_number",
+    "format_currency",
+    "format_percentage",
+    "format_ratio",
+    "format_change",
+    "format_large_number",
+    "format_trend_indicator",
+    "format_status_indicator",
+    "format_markdown_table",
+    "format_value_with_unit",
+    # Currency
+    "get_currency_symbol",
+    "get_currency_decimals",
+    "get_currency_name",
+    "is_supported_currency",
+    "format_sgd",
+    "calculate_gst_exclusive",
+    "calculate_gst_inclusive",
+    "calculate_gst_amount",
+    "is_sfrs_small_entity",
+    "SGD_GST_RATE",
+    "CURRENCY_INFO",
+]
+File 4 of 18: finanalyst_tools/utils/math_ops.py
+Python
+
+# finanalyst_tools/utils/math_ops.py
+"""
+Safe mathematical operations for financial calculations.
+
+This module provides Decimal-based arithmetic functions that:
+- Ensure precision (no floating-point errors)
+- Handle edge cases gracefully (division by zero, None values)
+- Support configurable rounding
+- Provide statistical functions
+
+All monetary and ratio calculations should use these functions
+to ensure consistency and accuracy.
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from typing import Sequence, TypeVar
+
+from finanalyst_tools.config import (
+    DECIMAL_PLACES,
+    DEFAULT_ROUNDING,
+    ZERO_THRESHOLD,
+    RoundingMode,
+)
+from finanalyst_tools.exceptions import (
+    DivisionByZeroError,
+    InvalidInputError,
+)
+
+
+# Type variable for numeric types
+Numeric = TypeVar("Numeric", int, float, Decimal)
+
+
+# ============================================================================
+# TYPE CONVERSION
+# ============================================================================
+
+def to_decimal(
+    value: Numeric | str | None,
+    default: Decimal | None = None
+) -> Decimal:
+    """
+    Safely convert a value to Decimal.
+    
+    Handles various input types and returns a default value
+    for None or unconvertible inputs.
+    
+    Args:
+        value: 

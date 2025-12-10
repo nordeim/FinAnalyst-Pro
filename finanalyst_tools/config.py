@@ -1,8 +1,15 @@
+# finanalyst_tools/config.py
 """
 Configuration and constants for FinAnalyst-Pro tools.
 
-This module centralizes all configuration values, thresholds, and constants
-used throughout the package. Modify these values to adjust behavior globally.
+This module provides centralized configuration for:
+- Decimal precision and rounding modes
+- Plausibility ranges for financial metrics
+- Reconciliation tolerances
+- Currency settings (SGD default)
+- Analysis parameters
+
+All constants use Final for immutability and are fully typed.
 """
 
 from __future__ import annotations
@@ -17,11 +24,16 @@ from typing import Final
 # ============================================================================
 
 class RoundingMode(str, Enum):
-    """Supported rounding modes for financial calculations."""
-    STANDARD = "ROUND_HALF_UP"     # Default: 0.5 rounds up (most common)
-    BANKERS = "ROUND_HALF_EVEN"    # Banker's rounding: 0.5 rounds to even
+    """
+    Supported rounding modes for financial calculations.
     
-    def get_decimal_rounding(self):
+    STANDARD: Round half up (0.5 → 1) - Most common in financial reporting
+    BANKERS: Round half to even (banker's rounding) - Reduces cumulative bias
+    """
+    STANDARD = "ROUND_HALF_UP"
+    BANKERS = "ROUND_HALF_EVEN"
+    
+    def get_decimal_rounding(self) -> str:
         """Get the decimal module rounding constant."""
         if self == RoundingMode.STANDARD:
             return ROUND_HALF_UP
@@ -31,14 +43,15 @@ class RoundingMode(str, Enum):
 # Default decimal precision for different contexts
 DECIMAL_PLACES: Final[dict[str, int]] = {
     "currency": 2,       # Monetary values: $1,234.56
-    "percentage": 2,     # Percentages: 45.67%
-    "ratio": 4,          # Ratios: 1.5234
+    "percentage": 2,     # Percentages: 12.34%
+    "ratio": 4,          # Financial ratios: 1.5432
     "shares": 0,         # Share counts: whole numbers
-    "growth_rate": 4,    # Growth rates: 12.3456%
-    "days": 0,           # Days (turnover): whole numbers
+    "growth_rate": 4,    # Growth rates: 0.1234 (12.34%)
+    "turnover": 2,       # Turnover ratios: 4.56x
+    "days": 0,           # Day counts: whole numbers
 }
 
-# Default rounding mode
+# Default rounding mode for all calculations
 DEFAULT_ROUNDING: Final[RoundingMode] = RoundingMode.STANDARD
 
 
@@ -50,56 +63,108 @@ class PlausibilityRanges:
     """
     Acceptable ranges for financial ratios and metrics.
     
-    Values outside these ranges trigger warnings (not errors).
-    Ranges are based on typical business metrics; specific industries
-    may have different norms.
+    Values outside these ranges trigger warnings (not errors) during analysis.
+    Ranges are intentionally wide to accommodate various industries and situations
+    while catching obvious data errors.
     
-    Format: (minimum, maximum) as percentages for margins, absolute for ratios
+    All percentage values are expressed as actual percentages (e.g., 20.0 = 20%).
+    All ratios are expressed as decimal values (e.g., 1.5 = 1.5x).
     """
     
-    # ─────────────────────────────────────────────────────────────────────
-    # Profitability Metrics (percentages)
-    # ─────────────────────────────────────────────────────────────────────
-    GROSS_MARGIN: tuple[float, float] = (-50.0, 95.0)
-    OPERATING_MARGIN: tuple[float, float] = (-100.0, 60.0)
-    NET_MARGIN: tuple[float, float] = (-200.0, 50.0)
-    EBITDA_MARGIN: tuple[float, float] = (-50.0, 70.0)
-    ROA: tuple[float, float] = (-50.0, 40.0)
-    ROE: tuple[float, float] = (-100.0, 60.0)
-    ROCE: tuple[float, float] = (-50.0, 50.0)
+    # -------------------------------------------------------------------------
+    # PROFITABILITY METRICS (percentages)
+    # -------------------------------------------------------------------------
     
-    # ─────────────────────────────────────────────────────────────────────
-    # Liquidity Ratios (absolute ratios)
-    # ─────────────────────────────────────────────────────────────────────
-    CURRENT_RATIO: tuple[float, float] = (0.1, 10.0)
-    QUICK_RATIO: tuple[float, float] = (0.05, 8.0)
-    CASH_RATIO: tuple[float, float] = (0.0, 5.0)
+    # Gross Margin: (Revenue - COGS) / Revenue
+    # Range: Can be negative (selling below cost) to very high (software/services)
+    GROSS_MARGIN: Final[tuple[float, float]] = (-50.0, 95.0)
     
-    # ─────────────────────────────────────────────────────────────────────
-    # Solvency Ratios (absolute ratios)
-    # ─────────────────────────────────────────────────────────────────────
-    DEBT_TO_EQUITY: tuple[float, float] = (0.0, 10.0)
-    DEBT_TO_ASSETS: tuple[float, float] = (0.0, 1.5)
-    INTEREST_COVERAGE: tuple[float, float] = (-10.0, 100.0)
-    EQUITY_RATIO: tuple[float, float] = (0.0, 1.0)
+    # Operating Margin: Operating Income / Revenue
+    # Range: Negative (losses) to moderate (even best companies rarely exceed 50%)
+    OPERATING_MARGIN: Final[tuple[float, float]] = (-100.0, 60.0)
     
-    # ─────────────────────────────────────────────────────────────────────
-    # Efficiency Ratios (absolute ratios / days)
-    # ─────────────────────────────────────────────────────────────────────
-    ASSET_TURNOVER: tuple[float, float] = (0.1, 5.0)
-    INVENTORY_TURNOVER: tuple[float, float] = (0.5, 50.0)
-    RECEIVABLES_TURNOVER: tuple[float, float] = (1.0, 30.0)
-    PAYABLES_TURNOVER: tuple[float, float] = (1.0, 30.0)
-    DAYS_SALES_OUTSTANDING: tuple[float, float] = (5.0, 180.0)
-    DAYS_INVENTORY_OUTSTANDING: tuple[float, float] = (5.0, 365.0)
-    DAYS_PAYABLES_OUTSTANDING: tuple[float, float] = (5.0, 180.0)
+    # Net Margin: Net Income / Revenue
+    # Range: Deep losses possible; >50% is extremely rare and suspicious
+    NET_MARGIN: Final[tuple[float, float]] = (-200.0, 50.0)
     
-    # ─────────────────────────────────────────────────────────────────────
-    # Growth Metrics (percentages)
-    # ─────────────────────────────────────────────────────────────────────
-    REVENUE_GROWTH: tuple[float, float] = (-80.0, 500.0)
-    NET_INCOME_GROWTH: tuple[float, float] = (-200.0, 1000.0)
-    ASSET_GROWTH: tuple[float, float] = (-50.0, 200.0)
+    # EBITDA Margin: EBITDA / Revenue
+    EBITDA_MARGIN: Final[tuple[float, float]] = (-50.0, 70.0)
+    
+    # Return on Assets: Net Income / Average Total Assets
+    # Range: Negative possible; >40% is exceptional
+    ROA: Final[tuple[float, float]] = (-50.0, 40.0)
+    
+    # Return on Equity: Net Income / Average Shareholders' Equity
+    # Range: Can be extreme with low equity; >60% is very high
+    ROE: Final[tuple[float, float]] = (-100.0, 80.0)
+    
+    # Return on Capital Employed
+    ROCE: Final[tuple[float, float]] = (-50.0, 60.0)
+    
+    # -------------------------------------------------------------------------
+    # LIQUIDITY METRICS (ratios)
+    # -------------------------------------------------------------------------
+    
+    # Current Ratio: Current Assets / Current Liabilities
+    # Range: Below 1.0 indicates liquidity issues; very high may indicate inefficiency
+    CURRENT_RATIO: Final[tuple[float, float]] = (0.1, 10.0)
+    
+    # Quick Ratio: (Current Assets - Inventory) / Current Liabilities
+    QUICK_RATIO: Final[tuple[float, float]] = (0.05, 8.0)
+    
+    # Cash Ratio: Cash / Current Liabilities
+    CASH_RATIO: Final[tuple[float, float]] = (0.0, 5.0)
+    
+    # -------------------------------------------------------------------------
+    # SOLVENCY METRICS (ratios)
+    # -------------------------------------------------------------------------
+    
+    # Debt to Equity: Total Liabilities / Shareholders' Equity
+    # Range: 0 (no debt) to very high (highly leveraged)
+    DEBT_TO_EQUITY: Final[tuple[float, float]] = (0.0, 10.0)
+    
+    # Debt to Assets: Total Liabilities / Total Assets
+    # Range: 0 to slightly above 1.0 (insolvent but possible)
+    DEBT_TO_ASSETS: Final[tuple[float, float]] = (0.0, 1.5)
+    
+    # Interest Coverage: EBIT / Interest Expense
+    # Range: Negative (not covering) to very high (minimal debt)
+    INTEREST_COVERAGE: Final[tuple[float, float]] = (-10.0, 100.0)
+    
+    # Equity Ratio: Shareholders' Equity / Total Assets
+    EQUITY_RATIO: Final[tuple[float, float]] = (-0.5, 1.0)
+    
+    # -------------------------------------------------------------------------
+    # EFFICIENCY METRICS (ratios/turnover)
+    # -------------------------------------------------------------------------
+    
+    # Asset Turnover: Revenue / Average Total Assets
+    ASSET_TURNOVER: Final[tuple[float, float]] = (0.1, 5.0)
+    
+    # Inventory Turnover: COGS / Average Inventory
+    INVENTORY_TURNOVER: Final[tuple[float, float]] = (0.5, 50.0)
+    
+    # Receivables Turnover: Revenue / Average Accounts Receivable
+    RECEIVABLES_TURNOVER: Final[tuple[float, float]] = (1.0, 50.0)
+    
+    # Payables Turnover: COGS / Average Accounts Payable
+    PAYABLES_TURNOVER: Final[tuple[float, float]] = (1.0, 30.0)
+    
+    # Fixed Asset Turnover: Revenue / Average Fixed Assets
+    FIXED_ASSET_TURNOVER: Final[tuple[float, float]] = (0.1, 20.0)
+    
+    # -------------------------------------------------------------------------
+    # GROWTH METRICS (percentages)
+    # -------------------------------------------------------------------------
+    
+    # Revenue Growth: (Current - Prior) / Prior
+    REVENUE_GROWTH: Final[tuple[float, float]] = (-80.0, 500.0)
+    
+    # Net Income Growth
+    NET_INCOME_GROWTH: Final[tuple[float, float]] = (-500.0, 1000.0)
+    
+    # Asset Growth
+    ASSET_GROWTH: Final[tuple[float, float]] = (-50.0, 200.0)
     
     @classmethod
     def get_range(cls, metric_name: str) -> tuple[float, float] | None:
@@ -107,11 +172,12 @@ class PlausibilityRanges:
         Get plausibility range for a metric by name.
         
         Args:
-            metric_name: Name of the metric (case-insensitive, underscores normalized)
+            metric_name: Name of the metric (case-insensitive, underscores/spaces flexible)
             
         Returns:
             Tuple of (min, max) or None if metric not found
         """
+        # Normalize the metric name
         normalized = metric_name.upper().replace(" ", "_").replace("-", "_")
         return getattr(cls, normalized, None)
     
@@ -131,6 +197,28 @@ class PlausibilityRanges:
         if range_tuple is None:
             return True  # No range defined = assume plausible
         return range_tuple[0] <= value <= range_tuple[1]
+    
+    @classmethod
+    def get_assessment(cls, metric_name: str, value: float) -> str:
+        """
+        Get a human-readable assessment of a metric value.
+        
+        Args:
+            metric_name: Name of the metric
+            value: The value to assess
+            
+        Returns:
+            Assessment string: "within_range", "below_range", "above_range", or "unknown"
+        """
+        range_tuple = cls.get_range(metric_name)
+        if range_tuple is None:
+            return "unknown"
+        
+        if value < range_tuple[0]:
+            return "below_range"
+        elif value > range_tuple[1]:
+            return "above_range"
+        return "within_range"
 
 
 # ============================================================================
@@ -141,44 +229,83 @@ class ReconciliationTolerances:
     """
     Acceptable tolerance levels for cross-statement reconciliation.
     
-    Expressed as percentage of the larger value being compared.
-    Financial statements may have minor rounding differences.
+    Expressed as a proportion (0.01 = 1%) of the larger value being compared.
+    Different tolerance levels for different reconciliation contexts.
     """
     
-    # Strict: for values that should match exactly
-    STRICT: Final[float] = 0.001  # 0.1% tolerance
+    # Strict: For values that should match exactly (e.g., net income across statements)
+    STRICT: Final[float] = 0.001  # 0.1%
     
-    # Normal: for values that may have minor rounding differences
-    NORMAL: Final[float] = 0.01  # 1% tolerance
+    # Normal: For values that may have minor rounding differences
+    NORMAL: Final[float] = 0.01  # 1%
     
-    # Loose: for derived values that may have compounding differences
-    LOOSE: Final[float] = 0.05  # 5% tolerance
+    # Loose: For derived values that may have compounding differences
+    LOOSE: Final[float] = 0.05  # 5%
     
-    # Default tolerance for unspecified checks
+    # Default tolerance when not specified
     DEFAULT: Final[float] = NORMAL
     
     @classmethod
-    def get_tolerance(cls, check_type: str) -> float:
-        """Get tolerance for a specific check type."""
-        tolerances = {
-            "net_income": cls.STRICT,
-            "cash_balance": cls.STRICT,
-            "retained_earnings": cls.NORMAL,
-            "total_assets": cls.STRICT,
-            "working_capital": cls.NORMAL,
-            "balance_sheet_equation": cls.STRICT,
-        }
-        return tolerances.get(check_type.lower(), cls.DEFAULT)
+    def get_tolerance(cls, level: str) -> float:
+        """
+        Get tolerance value by level name.
+        
+        Args:
+            level: One of "strict", "normal", "loose"
+            
+        Returns:
+            Tolerance as a proportion
+        """
+        level_upper = level.upper()
+        if level_upper == "STRICT":
+            return cls.STRICT
+        elif level_upper == "LOOSE":
+            return cls.LOOSE
+        return cls.NORMAL
+    
+    @classmethod
+    def is_within_tolerance(
+        cls, 
+        value_a: float, 
+        value_b: float, 
+        tolerance: float | None = None
+    ) -> bool:
+        """
+        Check if two values are within tolerance of each other.
+        
+        Args:
+            value_a: First value
+            value_b: Second value
+            tolerance: Tolerance level (proportion). Uses DEFAULT if not specified.
+            
+        Returns:
+            True if values are within tolerance
+        """
+        if tolerance is None:
+            tolerance = cls.DEFAULT
+        
+        if value_a == 0 and value_b == 0:
+            return True
+        
+        # Use the larger absolute value as the base
+        base = max(abs(value_a), abs(value_b))
+        if base == 0:
+            return True
+        
+        difference = abs(value_a - value_b)
+        return (difference / base) <= tolerance
 
 
 # ============================================================================
 # CURRENCY CONFIGURATION
 # ============================================================================
 
+# Default currency for Singapore SMB context
 DEFAULT_CURRENCY: Final[str] = "SGD"
 
-SUPPORTED_CURRENCIES: Final[set[str]] = {
-    "SGD",  # Singapore Dollar (default)
+# Supported currencies for the system
+SUPPORTED_CURRENCIES: Final[frozenset[str]] = frozenset({
+    "SGD",  # Singapore Dollar (primary)
     "USD",  # US Dollar
     "EUR",  # Euro
     "GBP",  # British Pound
@@ -190,116 +317,72 @@ SUPPORTED_CURRENCIES: Final[set[str]] = {
     "IDR",  # Indonesian Rupiah
     "THB",  # Thai Baht
     "INR",  # Indian Rupee
-}
-
-# Currency symbols for formatting
-CURRENCY_SYMBOLS: Final[dict[str, str]] = {
-    "SGD": "S$",
-    "USD": "$",
-    "EUR": "€",
-    "GBP": "£",
-    "JPY": "¥",
-    "CNY": "¥",
-    "HKD": "HK$",
-    "AUD": "A$",
-    "MYR": "RM",
-    "IDR": "Rp",
-    "THB": "฿",
-    "INR": "₹",
-}
-
-# Currencies that don't use decimal places (or use different decimals)
-ZERO_DECIMAL_CURRENCIES: Final[set[str]] = {"JPY", "IDR"}
+    "KRW",  # South Korean Won
+    "NZD",  # New Zealand Dollar
+    "PHP",  # Philippine Peso
+    "VND",  # Vietnamese Dong
+})
 
 
 # ============================================================================
 # ANALYSIS CONFIGURATION
 # ============================================================================
 
-# Minimum periods required for trend analysis
+# Minimum number of periods required for meaningful trend analysis
 MIN_PERIODS_FOR_TREND: Final[int] = 3
 
-# Default forecast horizon (periods)
+# Default number of periods for forecasting
 DEFAULT_FORECAST_PERIODS: Final[int] = 3
 
-# Days in year for turnover calculations
+# Maximum number of periods to include in analysis
+MAX_ANALYSIS_PERIODS: Final[int] = 10
+
+# Days in year for turnover/day calculations
 DAYS_IN_YEAR: Final[int] = 365
 
-# Days in quarter
-DAYS_IN_QUARTER: Final[int] = 91
+# Days in month (average) for monthly calculations
+DAYS_IN_MONTH: Final[float] = 30.44
+
+# Months in year
+MONTHS_IN_YEAR: Final[int] = 12
 
 
 # ============================================================================
-# SINGAPORE SMB CONTEXT
+# VALIDATION CONFIGURATION
 # ============================================================================
 
-class SingaporeConstants:
-    """Singapore-specific financial constants and thresholds."""
-    
-    # GST Rate (as of 2024)
-    GST_RATE: Final[float] = 0.09  # 9%
-    
-    # SFRS for Small Entities thresholds (meet 2 of 3 to qualify)
-    SFRS_SMALL_ENTITY_REVENUE: Final[int] = 10_000_000  # S$10M
-    SFRS_SMALL_ENTITY_ASSETS: Final[int] = 10_000_000   # S$10M
-    SFRS_SMALL_ENTITY_EMPLOYEES: Final[int] = 50
-    
-    # SME definition thresholds
-    SME_ANNUAL_SALES: Final[int] = 100_000_000  # S$100M
-    SME_EMPLOYEES: Final[int] = 200
-    
-    # Common financial year end months
-    COMMON_FYE_MONTHS: Final[list[int]] = [12, 3, 6]  # Dec, Mar, Jun
-    
-    @classmethod
-    def calculate_gst_exclusive(cls, gst_inclusive: float) -> float:
-        """Convert GST-inclusive amount to GST-exclusive."""
-        return gst_inclusive / (1 + cls.GST_RATE)
-    
-    @classmethod
-    def calculate_gst_amount(cls, gst_exclusive: float) -> float:
-        """Calculate GST on a GST-exclusive amount."""
-        return gst_exclusive * cls.GST_RATE
+# Maximum absolute value for any monetary amount (sanity check)
+MAX_MONETARY_VALUE: Final[float] = 1e15  # 1 quadrillion
+
+# Minimum value that's considered effectively zero
+ZERO_THRESHOLD: Final[float] = 1e-10
 
 
 # ============================================================================
-# METRIC METADATA
+# DISPLAY CONFIGURATION
 # ============================================================================
 
-METRIC_FORMULAS: Final[dict[str, str]] = {
-    "gross_profit_margin": "(Revenue - COGS) / Revenue × 100",
-    "operating_profit_margin": "(Revenue - COGS - OpEx) / Revenue × 100",
-    "net_profit_margin": "Net Income / Revenue × 100",
-    "ebitda_margin": "EBITDA / Revenue × 100",
-    "roa": "Net Income / Average Total Assets × 100",
-    "roe": "Net Income / Average Shareholders' Equity × 100",
-    "roce": "EBIT / (Total Assets - Current Liabilities) × 100",
-    "current_ratio": "Current Assets / Current Liabilities",
-    "quick_ratio": "(Current Assets - Inventory) / Current Liabilities",
-    "cash_ratio": "Cash and Equivalents / Current Liabilities",
-    "working_capital": "Current Assets - Current Liabilities",
-    "debt_to_equity": "Total Liabilities / Shareholders' Equity",
-    "debt_to_assets": "Total Liabilities / Total Assets",
-    "interest_coverage": "EBIT / Interest Expense",
-    "asset_turnover": "Revenue / Average Total Assets",
-    "inventory_turnover": "COGS / Average Inventory",
+# Symbols for trend indication
+TREND_SYMBOLS: Final[dict[str, str]] = {
+    "increasing": "↑",
+    "decreasing": "↓",
+    "stable": "→",
+    "volatile": "↕",
 }
 
-METRIC_UNITS: Final[dict[str, str]] = {
-    "gross_profit_margin": "percentage",
-    "operating_profit_margin": "percentage",
-    "net_profit_margin": "percentage",
-    "ebitda_margin": "percentage",
-    "roa": "percentage",
-    "roe": "percentage",
-    "roce": "percentage",
-    "current_ratio": "ratio",
-    "quick_ratio": "ratio",
-    "cash_ratio": "ratio",
-    "working_capital": "currency",
-    "debt_to_equity": "ratio",
-    "debt_to_assets": "ratio",
-    "interest_coverage": "ratio",
-    "asset_turnover": "ratio",
-    "inventory_turnover": "ratio",
+# Symbols for status indication
+STATUS_SYMBOLS: Final[dict[str, str]] = {
+    "good": "✅",
+    "warning": "⚠️",
+    "error": "❌",
+    "info": "ℹ️",
+    "unknown": "❓",
 }
+
+# Large number suffixes
+LARGE_NUMBER_SUFFIXES: Final[list[tuple[float, str]]] = [
+    (1e12, "T"),   # Trillion
+    (1e9, "B"),    # Billion
+    (1e6, "M"),    # Million
+    (1e3, "K"),    # Thousand
+]
