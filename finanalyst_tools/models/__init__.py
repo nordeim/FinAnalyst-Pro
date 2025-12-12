@@ -1,4 +1,4 @@
-# finanalyst_tools/models/__init__.py
+# File: finanalyst_tools/models/__init__.py
 """
 Data models for FinAnalyst-Pro Agent Tools.
 
@@ -8,14 +8,21 @@ This package provides Pydantic models for:
 - Validation results and issues
 
 All models support:
-- Type validation
+- Type validation via Pydantic
 - JSON serialization
 - Field aliases for common naming variations
 """
 
-from __future__ import annotations
+from finanalyst_tools.models.validation import (
+    ValidationSeverity,
+    ValidationIssue,
+    ValidationResult,
+    ReconciliationCheck,
+    ReconciliationResult,
+    PlausibilityCheck,
+    PlausibilityResult,
+)
 
-# Financial statement models
 from finanalyst_tools.models.financial_statements import (
     StatementType,
     PeriodType,
@@ -27,13 +34,11 @@ from finanalyst_tools.models.financial_statements import (
     MultiPeriodFinancialData,
 )
 
-# Analysis result models
 from finanalyst_tools.models.analysis_results import (
     MetricUnit,
     MetricCategory,
     TrendDirection,
     ConfidenceLevel,
-    CalculationStep,
     CalculationResult,
     MetricResult,
     MetricCollection,
@@ -42,18 +47,16 @@ from finanalyst_tools.models.analysis_results import (
     ComprehensiveAnalysisResult,
 )
 
-# Validation models
-from finanalyst_tools.models.validation import (
-    ValidationSeverity,
-    ValidationIssue,
-    ValidationResult,
-    ReconciliationCheck,
-    ReconciliationResult,
-    PlausibilityCheck,
-    PlausibilityResult,
-)
 
 __all__ = [
+    # Validation models
+    "ValidationSeverity",
+    "ValidationIssue",
+    "ValidationResult",
+    "ReconciliationCheck",
+    "ReconciliationResult",
+    "PlausibilityCheck",
+    "PlausibilityResult",
     # Statement types
     "StatementType",
     "PeriodType",
@@ -64,25 +67,15 @@ __all__ = [
     "CashFlowStatementData",
     "FinancialStatementSet",
     "MultiPeriodFinancialData",
-    # Result enums
+    # Result types
     "MetricUnit",
     "MetricCategory",
     "TrendDirection",
     "ConfidenceLevel",
-    # Result types
-    "CalculationStep",
     "CalculationResult",
     "MetricResult",
     "MetricCollection",
     "TrendAnalysisResult",
     "ConfidenceAssessment",
     "ComprehensiveAnalysisResult",
-    # Validation types
-    "ValidationSeverity",
-    "ValidationIssue",
-    "ValidationResult",
-    "ReconciliationCheck",
-    "ReconciliationResult",
-    "PlausibilityCheck",
-    "PlausibilityResult",
 ]

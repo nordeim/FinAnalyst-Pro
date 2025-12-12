@@ -1,9 +1,9 @@
-# finanalyst_tools/validation/plausibility.py
+# File: finanalyst_tools/validation/plausibility.py
 """
-Plausibility checks for calculated financial metrics.
+Plausibility checking for calculated financial metrics.
 
 Verifies that calculated values fall within reasonable ranges
-based on typical business metrics.
+based on typical business metrics and industry norms.
 """
 
 from __future__ import annotations
@@ -11,14 +11,13 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
+from finanalyst_tools.config import PlausibilityRanges
 from finanalyst_tools.models.validation import (
+    ValidationSeverity,
     PlausibilityCheck,
     PlausibilityResult,
-    ValidationSeverity,
 )
 from finanalyst_tools.models.analysis_results import CalculationResult
-from finanalyst_tools.config import PlausibilityRanges
-from finanalyst_tools.utils.math_ops import to_decimal
 
 
 def check_plausibility(
@@ -27,12 +26,12 @@ def check_plausibility(
     custom_range: tuple[float, float] | None = None,
 ) -> PlausibilityCheck:
     """
-    Check if a single metric value is within plausible range.
+    Check if a metric value is within plausible range.
     
     Args:
         metric_name: Name of the metric
         value: The calculated value
-        custom_range: Override the default plausibility range
+        custom_range: Optional custom range to use instead of default
         
     Returns:
         PlausibilityCheck result
@@ -41,95 +40,94 @@ def check_plausibility(
         return PlausibilityCheck(
             metric_name=metric_name,
             value=Decimal("0"),
-            min_plausible=0.0,
-            max_plausible=0.0,
-            is_plausible=True,  # None is not implausible, just missing
+            plausible_range=(0, 0),
+            is_plausible=True,
+            assessment="not_calculated",
             severity=ValidationSeverity.INFO,
-            message=f"{metric_name}: No value to check",
+            message="Value not calculated",
         )
     
-    dec_value = to_decimal(value)
+    dec_value = Decimal(str(value))
     float_value = float(dec_value)
     
     # Get range
     if custom_range:
-        min_plausible, max_plausible = custom_range
+        plausible_range = custom_range
     else:
-        range_tuple = PlausibilityRanges.get_range(metric_name)
-        if range_tuple is None:
-            # No defined range - assume plausible
-            return PlausibilityCheck(
-                metric_name=metric_name,
-                value=dec_value,
-                min_plausible=float("-inf"),
-                max_plausible=float("inf"),
-                is_plausible=True,
-                severity=ValidationSeverity.INFO,
-                message=f"{metric_name}: No plausibility range defined",
-            )
-        min_plausible, max_plausible = range_tuple
+        plausible_range = PlausibilityRanges.get_range(metric_name)
     
-    # Check if within range
-    is_plausible = min_plausible <= float_value <= max_plausible
+    if plausible_range is None:
+        return PlausibilityCheck(
+            metric_name=metric_name,
+            value=dec_value,
+            plausible_range=(float("-inf"), float("inf")),
+            is_plausible=True,
+            assessment="no_range_defined",
+            severity=ValidationSeverity.INFO,
+            message=f"No plausibility range defined for {metric_name}",
+        )
     
-    # Determine severity
-    if is_plausible:
+    # Check against range
+    min_val, max_val = plausible_range
+    is_plausible = min_val <= float_value <= max_val
+    
+    if float_value < min_val:
+        assessment = "below_range"
+        message = f"{metric_name} of {float_value:.2f} is below typical range ({min_val:.1f} to {max_val:.1f})"
+        severity = ValidationSeverity.WARNING
+    elif float_value > max_val:
+        assessment = "above_range"
+        message = f"{metric_name} of {float_value:.2f} is above typical range ({min_val:.1f} to {max_val:.1f})"
+        severity = ValidationSeverity.WARNING
+    else:
+        assessment = "within_range"
+        message = f"{metric_name} of {float_value:.2f} is within typical range"
         severity = ValidationSeverity.INFO
-    else:
-        # How far out of range?
-        if float_value < min_plausible:
-            deviation = min_plausible - float_value
-        else:
-            deviation = float_value - max_plausible
-        
-        range_size = max_plausible - min_plausible
-        if range_size > 0:
-            relative_deviation = deviation / range_size
-        else:
-            relative_deviation = deviation
-        
-        # Major deviation = error, minor = warning
-        if relative_deviation > 0.5:
-            severity = ValidationSeverity.ERROR
-        else:
-            severity = ValidationSeverity.WARNING
     
     return PlausibilityCheck(
         metric_name=metric_name,
         value=dec_value,
-        min_plausible=min_plausible,
-        max_plausible=max_plausible,
+        plausible_range=plausible_range,
         is_plausible=is_plausible,
+        assessment=assessment,
         severity=severity,
+        message=message,
     )
 
 
 def check_all_plausibility(
-    metrics: dict[str, Decimal | float | None],
+    metrics: list[CalculationResult],
 ) -> PlausibilityResult:
     """
-    Check plausibility for multiple metrics.
+    Check plausibility for a list of calculation results.
     
     Args:
-        metrics: Dictionary of metric_name -> value
+        metrics: List of calculation results to check
         
     Returns:
-        PlausibilityResult with all checks
+        PlausibilityResult with all check results
     """
     result = PlausibilityResult()
     
-    for metric_name, value in metrics.items():
-        check = check_plausibility(metric_name, value)
+    for metric in metrics:
+        check = check_plausibility(
+            metric_name=metric.metric_name,
+            value=metric.value,
+            custom_range=metric.plausibility_range,
+        )
         result.add_check(check)
+        
+        # Update the metric's plausibility status
+        if not check.is_plausible:
+            metric.is_plausible = False
+            metric.add_warning(check.message)
     
     return result
 
 
 class PlausibilityChecker:
     """
-    Configurable plausibility checker.
-    
-    Allows custom ranges and severity thresholds.
+    Class-based plausibility checker with customization options.
     """
     
     def __init__(
@@ -138,14 +136,20 @@ class PlausibilityChecker:
         strict_mode: bool = False,
     ):
         """
-        Initialize the checker.
+        Initialize the plausibility checker.
         
         Args:
-            custom_ranges: Override default ranges for specific metrics
-            strict_mode: If True, treat warnings as errors
+            custom_ranges: Dictionary of custom ranges by metric name
+            strict_mode: If True, implausible values raise errors instead of warnings
         """
         self.custom_ranges = custom_ranges or {}
         self.strict_mode = strict_mode
+    
+    def get_range(self, metric_name: str) -> tuple[float, float] | None:
+        """Get the range for a metric, checking custom ranges first."""
+        if metric_name in self.custom_ranges:
+            return self.custom_ranges[metric_name]
+        return PlausibilityRanges.get_range(metric_name)
     
     def check(
         self,
@@ -154,55 +158,36 @@ class PlausibilityChecker:
     ) -> PlausibilityCheck:
         """Check a single metric."""
         custom_range = self.custom_ranges.get(metric_name)
-        check = check_plausibility(metric_name, value, custom_range)
+        result = check_plausibility(metric_name, value, custom_range)
         
-        if self.strict_mode and check.severity == ValidationSeverity.WARNING:
-            check.severity = ValidationSeverity.ERROR
+        # Upgrade to error if strict mode
+        if self.strict_mode and not result.is_plausible:
+            result.severity = ValidationSeverity.ERROR
         
-        return check
-    
-    def check_calculation_result(
-        self,
-        result: CalculationResult,
-    ) -> PlausibilityCheck:
-        """
-        Check plausibility of a CalculationResult.
-        
-        Updates the result's plausibility fields.
-        """
-        check = self.check(result.metric_name, result.value)
-        
-        # Update the calculation result
-        result.is_plausible = check.is_plausible
-        result.plausibility_range = (check.min_plausible, check.max_plausible)
-        
-        if not check.is_plausible:
-            result.add_warning(check.message)
-        
-        return check
+        return result
     
     def check_all(
         self,
-        metrics: dict[str, Decimal | float | None],
+        metrics: list[CalculationResult],
     ) -> PlausibilityResult:
         """Check multiple metrics."""
         result = PlausibilityResult()
         
-        for metric_name, value in metrics.items():
-            check = self.check(metric_name, value)
+        for metric in metrics:
+            check = self.check(metric.metric_name, metric.value)
             result.add_check(check)
+            
+            if not check.is_plausible:
+                metric.is_plausible = False
+                metric.add_warning(check.message)
         
         return result
     
-    def check_calculation_results(
+    def add_custom_range(
         self,
-        results: list[CalculationResult],
-    ) -> PlausibilityResult:
-        """Check multiple CalculationResults."""
-        plausibility_result = PlausibilityResult()
-        
-        for result in results:
-            check = self.check_calculation_result(result)
-            plausibility_result.add_check(check)
-        
-        return plausibility_result
+        metric_name: str,
+        min_value: float,
+        max_value: float,
+    ) -> None:
+        """Add or update a custom range."""
+        self.custom_ranges[metric_name] = (min_value, max_value)

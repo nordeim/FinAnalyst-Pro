@@ -1,12 +1,12 @@
-# finanalyst_tools/models/validation.py
+# File: finanalyst_tools/models/validation.py
 """
 Models for validation results and issues.
 
-Provides structured types for:
+Provides structured representations for:
 - Validation issues with severity levels
 - Validation results with aggregated issues
-- Reconciliation check results
-- Plausibility check results
+- Reconciliation checks and results
+- Plausibility checks and results
 """
 
 from __future__ import annotations
@@ -20,9 +20,9 @@ import json
 
 class ValidationSeverity(str, Enum):
     """Severity levels for validation issues."""
-    ERROR = "error"      # Blocking - cannot proceed
-    WARNING = "warning"  # Non-blocking - proceed with caution
-    INFO = "info"        # Informational only
+    ERROR = "error"       # Blocking - cannot proceed
+    WARNING = "warning"   # Non-blocking - proceed with caution
+    INFO = "info"         # Informational only
 
 
 @dataclass
@@ -31,12 +31,12 @@ class ValidationIssue:
     Represents a single validation issue.
     
     Attributes:
-        field: The field that has the issue
-        message: Description of the issue
-        severity: ERROR, WARNING, or INFO
-        actual_value: The value that caused the issue
-        expected: Description of what was expected
-        suggestion: How to fix the issue
+        field: Name of the field with the issue
+        message: Human-readable description of the issue
+        severity: Issue severity level
+        actual_value: The value that was found (optional)
+        expected: Description of what was expected (optional)
+        suggestion: Actionable suggestion for resolution (optional)
     """
     field: str
     message: str
@@ -53,7 +53,7 @@ class ValidationIssue:
             "severity": self.severity.value,
         }
         if self.actual_value is not None:
-            result["actual_value"] = str(self.actual_value)
+            result["actual_value"] = self.actual_value
         if self.expected:
             result["expected"] = self.expected
         if self.suggestion:
@@ -61,8 +61,12 @@ class ValidationIssue:
         return result
     
     def __str__(self) -> str:
-        icon = {"error": "❌", "warning": "⚠️", "info": "ℹ️"}[self.severity.value]
-        return f"{icon} [{self.field}] {self.message}"
+        prefix = {
+            ValidationSeverity.ERROR: "❌",
+            ValidationSeverity.WARNING: "⚠️",
+            ValidationSeverity.INFO: "ℹ️",
+        }.get(self.severity, "")
+        return f"{prefix} [{self.field}] {self.message}"
 
 
 @dataclass
@@ -70,14 +74,16 @@ class ValidationResult:
     """
     Aggregated result of validation checks.
     
-    Contains lists of issues categorized by severity.
-    Provides properties for quick status checks.
+    Provides methods to:
+    - Add issues
+    - Merge with other results
+    - Check if processing can proceed
+    - Format as table or dict
     """
     is_valid: bool = True
     issues: list[ValidationIssue] = field(default_factory=list)
     warnings: list[ValidationIssue] = field(default_factory=list)
     info: list[ValidationIssue] = field(default_factory=list)
-    context: dict[str, Any] = field(default_factory=dict)
     
     @property
     def error_count(self) -> int:
@@ -101,37 +107,20 @@ class ValidationResult:
     
     @property
     def can_proceed(self) -> bool:
-        """Whether analysis can proceed (no errors)."""
+        """Whether processing can proceed (no errors)."""
         return self.error_count == 0
     
-    @property
-    def all_issues(self) -> list[ValidationIssue]:
-        """All issues combined, sorted by severity."""
-        return self.issues + self.warnings + self.info
-    
-    def add_issue(
-        self,
-        field: str,
-        message: str,
-        severity: ValidationSeverity,
-        actual_value: Any = None,
-        expected: str | None = None,
-        suggestion: str | None = None,
-    ) -> None:
-        """Add a validation issue."""
-        issue = ValidationIssue(
-            field=field,
-            message=message,
-            severity=severity,
-            actual_value=actual_value,
-            expected=expected,
-            suggestion=suggestion,
-        )
+    def add_issue(self, issue: ValidationIssue) -> None:
+        """
+        Add an issue to the appropriate list based on severity.
         
-        if severity == ValidationSeverity.ERROR:
+        Args:
+            issue: The validation issue to add
+        """
+        if issue.severity == ValidationSeverity.ERROR:
             self.issues.append(issue)
             self.is_valid = False
-        elif severity == ValidationSeverity.WARNING:
+        elif issue.severity == ValidationSeverity.WARNING:
             self.warnings.append(issue)
         else:
             self.info.append(issue)
@@ -145,10 +134,14 @@ class ValidationResult:
         suggestion: str | None = None,
     ) -> None:
         """Convenience method to add an error."""
-        self.add_issue(
-            field, message, ValidationSeverity.ERROR,
-            actual_value, expected, suggestion
-        )
+        self.add_issue(ValidationIssue(
+            field=field,
+            message=message,
+            severity=ValidationSeverity.ERROR,
+            actual_value=actual_value,
+            expected=expected,
+            suggestion=suggestion,
+        ))
     
     def add_warning(
         self,
@@ -159,29 +152,45 @@ class ValidationResult:
         suggestion: str | None = None,
     ) -> None:
         """Convenience method to add a warning."""
-        self.add_issue(
-            field, message, ValidationSeverity.WARNING,
-            actual_value, expected, suggestion
-        )
+        self.add_issue(ValidationIssue(
+            field=field,
+            message=message,
+            severity=ValidationSeverity.WARNING,
+            actual_value=actual_value,
+            expected=expected,
+            suggestion=suggestion,
+        ))
     
-    def add_info(self, field: str, message: str) -> None:
+    def add_info(
+        self,
+        field: str,
+        message: str,
+        actual_value: Any = None,
+    ) -> None:
         """Convenience method to add an info message."""
-        self.add_issue(field, message, ValidationSeverity.INFO)
+        self.add_issue(ValidationIssue(
+            field=field,
+            message=message,
+            severity=ValidationSeverity.INFO,
+            actual_value=actual_value,
+        ))
     
     def merge(self, other: "ValidationResult") -> "ValidationResult":
         """
         Merge another ValidationResult into this one.
         
-        Returns a new ValidationResult with combined issues.
+        Args:
+            other: Another ValidationResult to merge
+            
+        Returns:
+            Self for chaining
         """
-        merged = ValidationResult(
-            is_valid=self.is_valid and other.is_valid,
-            issues=self.issues + other.issues,
-            warnings=self.warnings + other.warnings,
-            info=self.info + other.info,
-            context={**self.context, **other.context},
-        )
-        return merged
+        self.issues.extend(other.issues)
+        self.warnings.extend(other.warnings)
+        self.info.extend(other.info)
+        if not other.is_valid:
+            self.is_valid = False
+        return self
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -191,53 +200,70 @@ class ValidationResult:
             "error_count": self.error_count,
             "warning_count": self.warning_count,
             "info_count": self.info_count,
-            "issues": [i.to_dict() for i in self.issues],
-            "warnings": [w.to_dict() for w in self.warnings],
-            "info": [i.to_dict() for i in self.info],
-            "context": self.context,
+            "errors": [issue.to_dict() for issue in self.issues],
+            "warnings": [issue.to_dict() for issue in self.warnings],
+            "info": [issue.to_dict() for issue in self.info],
         }
     
     def to_json(self) -> str:
         """Convert to JSON string."""
         return json.dumps(self.to_dict(), indent=2, default=str)
     
-    def to_markdown(self) -> str:
-        """Format as markdown for display."""
-        lines = []
+    def to_table(self) -> str:
+        """
+        Format as Markdown table.
         
-        status = "✅ Valid" if self.is_valid else "❌ Invalid"
-        lines.append(f"**Validation Status**: {status}")
-        lines.append(f"- Errors: {self.error_count}")
-        lines.append(f"- Warnings: {self.warning_count}")
-        lines.append(f"- Info: {self.info_count}")
-        lines.append("")
+        Returns:
+            Markdown table string
+        """
+        if self.total_issue_count == 0:
+            return "✅ No validation issues found."
         
-        if self.issues:
-            lines.append("### Errors")
-            for issue in self.issues:
-                lines.append(f"- {issue}")
-            lines.append("")
+        lines = ["| Severity | Field | Message |", "|----------|-------|---------|"]
         
-        if self.warnings:
-            lines.append("### Warnings")
-            for warning in self.warnings:
-                lines.append(f"- {warning}")
-            lines.append("")
+        all_issues = (
+            [(i, "🔴 Error") for i in self.issues] +
+            [(i, "🟡 Warning") for i in self.warnings] +
+            [(i, "🔵 Info") for i in self.info]
+        )
         
-        if self.info:
-            lines.append("### Information")
-            for info in self.info:
-                lines.append(f"- {info}")
+        for issue, severity_label in all_issues:
+            lines.append(f"| {severity_label} | {issue.field} | {issue.message} |")
         
         return "\n".join(lines)
+    
+    def to_summary(self) -> str:
+        """Generate a brief summary string."""
+        if self.is_valid and self.warning_count == 0:
+            return "✅ Validation passed with no issues"
+        
+        parts = []
+        if self.error_count > 0:
+            parts.append(f"{self.error_count} error(s)")
+        if self.warning_count > 0:
+            parts.append(f"{self.warning_count} warning(s)")
+        if self.info_count > 0:
+            parts.append(f"{self.info_count} info")
+        
+        status = "❌ Validation failed" if not self.is_valid else "⚠️ Validation passed with warnings"
+        return f"{status}: {', '.join(parts)}"
 
 
 @dataclass
 class ReconciliationCheck:
     """
-    Result of a single reconciliation check.
+    Result of a single cross-statement reconciliation check.
     
-    Compares values between two sources (statements).
+    Attributes:
+        check_name: Name of the reconciliation check
+        statement_a: Source of first value
+        value_a: First value
+        statement_b: Source of second value
+        value_b: Second value
+        difference: Absolute difference between values
+        tolerance: Tolerance used for comparison
+        passed: Whether the check passed
+        message: Human-readable result message
     """
     check_name: str
     statement_a: str
@@ -247,21 +273,10 @@ class ReconciliationCheck:
     difference: Decimal
     tolerance: float
     passed: bool
-    message: str = ""
-    
-    def __post_init__(self):
-        if not self.message:
-            if self.passed:
-                self.message = f"{self.check_name}: Values match within tolerance"
-            else:
-                self.message = (
-                    f"{self.check_name}: Mismatch - {self.statement_a} has "
-                    f"{self.value_a}, {self.statement_b} has {self.value_b} "
-                    f"(difference: {self.difference}, tolerance: {self.tolerance:.2%})"
-                )
+    message: str
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
+        """Convert to dictionary for JSON serialization."""
         return {
             "check_name": self.check_name,
             "statement_a": self.statement_a,
@@ -273,12 +288,16 @@ class ReconciliationCheck:
             "passed": self.passed,
             "message": self.message,
         }
+    
+    def __str__(self) -> str:
+        status = "✅" if self.passed else "❌"
+        return f"{status} {self.check_name}: {self.message}"
 
 
 @dataclass
 class ReconciliationResult:
     """
-    Aggregated result of reconciliation checks.
+    Aggregated result of all reconciliation checks.
     """
     checks: list[ReconciliationCheck] = field(default_factory=list)
     
@@ -303,11 +322,11 @@ class ReconciliationResult:
         return [check for check in self.checks if not check.passed]
     
     def add_check(self, check: ReconciliationCheck) -> None:
-        """Add a reconciliation check."""
+        """Add a reconciliation check result."""
         self.checks.append(check)
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
+        """Convert to dictionary for JSON serialization."""
         return {
             "all_passed": self.all_passed,
             "passed_count": self.passed_count,
@@ -317,71 +336,94 @@ class ReconciliationResult:
     
     def to_json(self) -> str:
         """Convert to JSON string."""
-        return json.dumps(self.to_dict(), indent=2)
+        return json.dumps(self.to_dict(), indent=2, default=str)
     
-    def to_markdown(self) -> str:
-        """Format as markdown."""
-        lines = []
+    def to_table(self) -> str:
+        """Format as Markdown table."""
+        if not self.checks:
+            return "No reconciliation checks performed."
         
-        status = "✅ All Passed" if self.all_passed else "❌ Some Failed"
-        lines.append(f"**Reconciliation Status**: {status}")
-        lines.append(f"- Passed: {self.passed_count}/{len(self.checks)}")
-        lines.append("")
+        lines = [
+            "| Check | Status | Statement A | Value A | Statement B | Value B | Difference |",
+            "|-------|--------|-------------|---------|-------------|---------|------------|"
+        ]
         
-        if not self.all_passed:
-            lines.append("### Failed Checks")
-            for check in self.failed_checks:
-                lines.append(f"- {check.message}")
+        for check in self.checks:
+            status = "✅" if check.passed else "❌"
+            lines.append(
+                f"| {check.check_name} | {status} | {check.statement_a} | "
+                f"{check.value_a:,.2f} | {check.statement_b} | "
+                f"{check.value_b:,.2f} | {check.difference:,.2f} |"
+            )
         
         return "\n".join(lines)
+    
+    def to_validation_result(self) -> ValidationResult:
+        """Convert to ValidationResult for unified handling."""
+        result = ValidationResult()
+        
+        for check in self.checks:
+            if not check.passed:
+                result.add_error(
+                    field=check.check_name,
+                    message=check.message,
+                    actual_value=f"{check.statement_a}={check.value_a}, {check.statement_b}={check.value_b}",
+                    expected=f"Difference within {check.tolerance:.1%}",
+                    suggestion="Verify data accuracy across statements",
+                )
+        
+        return result
 
 
 @dataclass
 class PlausibilityCheck:
     """
     Result of a single plausibility check.
+    
+    Attributes:
+        metric_name: Name of the metric checked
+        value: The calculated value
+        plausible_range: Expected (min, max) range
+        is_plausible: Whether value is within range
+        assessment: "within_range", "below_range", or "above_range"
+        severity: Severity if implausible (usually WARNING)
+        message: Human-readable result message
     """
     metric_name: str
     value: Decimal
-    min_plausible: float
-    max_plausible: float
+    plausible_range: tuple[float, float]
     is_plausible: bool
+    assessment: str
     severity: ValidationSeverity
-    message: str = ""
-    
-    def __post_init__(self):
-        if not self.message:
-            if self.is_plausible:
-                self.message = f"{self.metric_name}: {self.value} is within plausible range"
-            else:
-                self.message = (
-                    f"{self.metric_name}: {self.value} is outside plausible range "
-                    f"({self.min_plausible} to {self.max_plausible})"
-                )
+    message: str
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
+        """Convert to dictionary for JSON serialization."""
         return {
             "metric_name": self.metric_name,
             "value": float(self.value),
-            "min_plausible": self.min_plausible,
-            "max_plausible": self.max_plausible,
+            "plausible_range": self.plausible_range,
             "is_plausible": self.is_plausible,
+            "assessment": self.assessment,
             "severity": self.severity.value,
             "message": self.message,
         }
+    
+    def __str__(self) -> str:
+        status = "✅" if self.is_plausible else "⚠️"
+        return f"{status} {self.metric_name}: {self.message}"
 
 
 @dataclass
 class PlausibilityResult:
     """
-    Aggregated result of plausibility checks.
+    Aggregated result of all plausibility checks.
     """
     checks: list[PlausibilityCheck] = field(default_factory=list)
     
     @property
     def all_plausible(self) -> bool:
-        """Whether all values are plausible."""
+        """Whether all checks passed."""
         return all(check.is_plausible for check in self.checks)
     
     @property
@@ -400,11 +442,11 @@ class PlausibilityResult:
         return [check for check in self.checks if not check.is_plausible]
     
     def add_check(self, check: PlausibilityCheck) -> None:
-        """Add a plausibility check."""
+        """Add a plausibility check result."""
         self.checks.append(check)
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary."""
+        """Convert to dictionary for JSON serialization."""
         return {
             "all_plausible": self.all_plausible,
             "plausible_count": self.plausible_count,
@@ -412,16 +454,22 @@ class PlausibilityResult:
             "checks": [check.to_dict() for check in self.checks],
         }
     
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        return json.dumps(self.to_dict(), indent=2, default=str)
+    
     def to_validation_result(self) -> ValidationResult:
         """Convert to ValidationResult for unified handling."""
         result = ValidationResult()
+        
         for check in self.checks:
             if not check.is_plausible:
-                result.add_issue(
+                result.add_warning(
                     field=check.metric_name,
                     message=check.message,
-                    severity=check.severity,
-                    actual_value=check.value,
-                    expected=f"Between {check.min_plausible} and {check.max_plausible}",
+                    actual_value=float(check.value),
+                    expected=f"Between {check.plausible_range[0]} and {check.plausible_range[1]}",
+                    suggestion="Verify input data accuracy",
                 )
+        
         return result

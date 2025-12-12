@@ -1,9 +1,9 @@
-# finanalyst_tools/validation/__init__.py
+# File: finanalyst_tools/validation/__init__.py
 """
-Validation module for FinAnalyst-Pro Agent Tools.
+Validation functions for FinAnalyst-Pro Agent Tools.
 
-Provides:
-- Schema validation for financial data
+This package provides:
+- Schema validation for financial statements
 - Cross-statement reconciliation
 - Plausibility checks for calculated metrics
 """
@@ -14,7 +14,7 @@ from finanalyst_tools.validation.schema_validator import (
     validate_cash_flow_schema,
     validate_financial_data_completeness,
     validate_statement_set,
-    REQUIRED_FIELDS_BY_ANALYSIS,
+    REQUIRED_FIELDS,
     FIELD_ALIASES,
 )
 
@@ -23,6 +23,7 @@ from finanalyst_tools.validation.reconciliation import (
     reconcile_cash_balance,
     reconcile_retained_earnings,
     reconcile_balance_sheet_equation,
+    reconcile_working_capital,
     run_all_reconciliations,
 )
 
@@ -40,13 +41,14 @@ __all__ = [
     "validate_cash_flow_schema",
     "validate_financial_data_completeness",
     "validate_statement_set",
-    "REQUIRED_FIELDS_BY_ANALYSIS",
+    "REQUIRED_FIELDS",
     "FIELD_ALIASES",
     # Reconciliation
     "reconcile_net_income",
     "reconcile_cash_balance",
     "reconcile_retained_earnings",
     "reconcile_balance_sheet_equation",
+    "reconcile_working_capital",
     "run_all_reconciliations",
     # Plausibility
     "check_plausibility",
