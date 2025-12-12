@@ -10,7 +10,9 @@ Awesome job on your meticulous review, analysis and planning! Yes, please meticu
 
 ---
 
-awesome understanding! now, please meticulously review and analyze the two attached code submission with some files overlapping, then compare and critique their implementation quality and coding standard.
+Awesome understanding! Now, please meticulously review and analyze the two attached code submissions with some files overlapping, then compare and critique their implementation quality and coding standards.
+
+Awesome understanding! Now, please meticulously review and analyze the two attached code submissions, then compare and critique their implementation quality and coding standards. 
 
 ---
 
