@@ -1,12 +1,12 @@
 # finanalyst_tools/tool_registry.py
 """
-Central registry of all tools with metadata for LLM function calling.
+Central registry of all tools for LLM function calling.
 
 Provides:
-- Tool definitions with parameters and descriptions
-- OpenAI function calling schema generation
-- Anthropic tool schema generation
-- Tool discovery and lookup
+- Tool definitions with complete metadata
+- OpenAI and Anthropic schema generation
+- Tool discovery and filtering
+- Parameter validation schemas
 """
 
 from __future__ import annotations
@@ -26,25 +26,35 @@ class ToolCategory(str, Enum):
     EFFICIENCY = "efficiency"
     GROWTH = "growth"
     VALUATION = "valuation"
-    TREND = "trend"
-    FORECAST = "forecast"
+    CASH_FLOW = "cash_flow"
     RECONCILIATION = "reconciliation"
-    REPORTING = "reporting"
+    FORMATTING = "formatting"
     UTILITY = "utility"
+    ANALYSIS = "analysis"
 
 
 @dataclass
 class ToolParameter:
-    """Definition of a tool parameter."""
+    """
+    Definition of a tool parameter.
+    
+    Attributes:
+        name: Parameter name
+        type: Parameter type (string, number, integer, boolean, object, array)
+        description: Human-readable description
+        required: Whether the parameter is required
+        default: Default value if not provided
+        enum: List of allowed values (for string enums)
+    """
     name: str
-    type: str  # "string", "number", "integer", "boolean", "array", "object"
+    type: str
     description: str
     required: bool = True
     default: Any = None
     enum: list[str] | None = None
     
-    def to_json_schema(self) -> dict[str, Any]:
-        """Convert to JSON Schema format."""
+    def to_openai_schema(self) -> dict[str, Any]:
+        """Convert to OpenAI parameter schema."""
         schema: dict[str, Any] = {
             "type": self.type,
             "description": self.description,
@@ -54,18 +64,44 @@ class ToolParameter:
         if self.default is not None:
             schema["default"] = self.default
         return schema
+    
+    def to_anthropic_schema(self) -> dict[str, Any]:
+        """Convert to Anthropic parameter schema."""
+        # Anthropic uses similar format to OpenAI
+        return self.to_openai_schema()
 
 
 @dataclass
 class ToolDefinition:
-    """Complete definition of a tool for LLM function calling."""
+    """
+    Complete definition of a tool.
+    
+    Attributes:
+        name: Tool name (function name for calling)
+        description: Human-readable description
+        category: Tool category
+        parameters: List of parameters
+        returns: Description of return value
+        example: Example usage
+        function: Reference to the actual function
+    """
     name: str
     description: str
     category: ToolCategory
     parameters: list[ToolParameter]
     returns: str
-    function: Callable[..., Any]
-    example: str | None = None
+    example: str = ""
+    function: Callable | None = None
+    
+    @property
+    def required_parameters(self) -> list[str]:
+        """Get list of required parameter names."""
+        return [p.name for p in self.parameters if p.required]
+    
+    @property
+    def optional_parameters(self) -> list[str]:
+        """Get list of optional parameter names."""
+        return [p.name for p in self.parameters if not p.required]
     
     def to_openai_schema(self) -> dict[str, Any]:
         """
@@ -75,12 +111,8 @@ class ToolDefinition:
             Dictionary in OpenAI function format
         """
         properties = {}
-        required = []
-        
         for param in self.parameters:
-            properties[param.name] = param.to_json_schema()
-            if param.required:
-                required.append(param.name)
+            properties[param.name] = param.to_openai_schema()
         
         return {
             "type": "function",
@@ -90,25 +122,21 @@ class ToolDefinition:
                 "parameters": {
                     "type": "object",
                     "properties": properties,
-                    "required": required,
+                    "required": self.required_parameters,
                 },
             },
         }
     
     def to_anthropic_schema(self) -> dict[str, Any]:
         """
-        Convert to Anthropic tool schema.
+        Convert to Anthropic tool use schema.
         
         Returns:
             Dictionary in Anthropic tool format
         """
         properties = {}
-        required = []
-        
         for param in self.parameters:
-            properties[param.name] = param.to_json_schema()
-            if param.required:
-                required.append(param.name)
+            properties[param.name] = param.to_anthropic_schema()
         
         return {
             "name": self.name,
@@ -116,12 +144,12 @@ class ToolDefinition:
             "input_schema": {
                 "type": "object",
                 "properties": properties,
-                "required": required,
+                "required": self.required_parameters,
             },
         }
     
     def to_dict(self) -> dict[str, Any]:
-        """Convert to dictionary for documentation."""
+        """Convert to dictionary."""
         return {
             "name": self.name,
             "description": self.description,
@@ -144,14 +172,14 @@ class ToolRegistry:
     """
     Central registry for all available tools.
     
-    Provides methods for:
-    - Registering tools
-    - Looking up tools by name
-    - Listing tools by category
-    - Generating LLM-compatible schemas
+    Provides:
+    - Tool registration and lookup
+    - Filtering by category
+    - Schema generation for LLM integration
     """
     
     def __init__(self):
+        """Initialize the registry."""
         self._tools: dict[str, ToolDefinition] = {}
         self._register_all_tools()
     
@@ -172,7 +200,7 @@ class ToolRegistry:
             name: Tool name
             
         Returns:
-            Tool definition or None if not found
+            ToolDefinition or None if not found
         """
         return self._tools.get(name)
     
@@ -187,32 +215,39 @@ class ToolRegistry:
             category: Optional category filter
             
         Returns:
-            List of matching tool definitions
+            List of tool definitions
         """
         if category is None:
             return list(self._tools.values())
         return [t for t in self._tools.values() if t.category == category]
     
-    def get_tool_names(
+    def list_tool_names(
         self,
         category: ToolCategory | None = None,
     ) -> list[str]:
-        """Get list of tool names."""
-        tools = self.list_tools(category)
-        return [t.name for t in tools]
+        """
+        List tool names, optionally filtered by category.
+        
+        Args:
+            category: Optional category filter
+            
+        Returns:
+            List of tool names
+        """
+        return [t.name for t in self.list_tools(category)]
     
     def get_openai_tools(
         self,
         categories: list[ToolCategory] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Get OpenAI function calling schemas for tools.
+        Get tools in OpenAI function calling format.
         
         Args:
             categories: Optional list of categories to include
             
         Returns:
-            List of OpenAI function schemas
+            List of tool schemas
         """
         tools = self._tools.values()
         if categories:
@@ -224,13 +259,13 @@ class ToolRegistry:
         categories: list[ToolCategory] | None = None,
     ) -> list[dict[str, Any]]:
         """
-        Get Anthropic tool schemas.
+        Get tools in Anthropic tool use format.
         
         Args:
             categories: Optional list of categories to include
             
         Returns:
-            List of Anthropic tool schemas
+            List of tool schemas
         """
         tools = self._tools.values()
         if categories:
@@ -239,37 +274,39 @@ class ToolRegistry:
     
     def get_tool_descriptions(self) -> str:
         """
-        Get formatted descriptions of all tools for prompt inclusion.
+        Get human-readable descriptions of all tools.
         
         Returns:
-            Markdown-formatted tool descriptions
+            Formatted string with tool descriptions
         """
-        lines = ["# Available Financial Analysis Tools\n"]
+        lines = ["# Available Tools\n"]
         
         # Group by category
-        categories: dict[ToolCategory, list[ToolDefinition]] = {}
+        by_category: dict[ToolCategory, list[ToolDefinition]] = {}
         for tool in self._tools.values():
-            if tool.category not in categories:
-                categories[tool.category] = []
-            categories[tool.category].append(tool)
+            if tool.category not in by_category:
+                by_category[tool.category] = []
+            by_category[tool.category].append(tool)
         
-        for category in sorted(categories.keys(), key=lambda c: c.value):
-            lines.append(f"\n## {category.value.title()}\n")
-            for tool in sorted(categories[category], key=lambda t: t.name):
-                lines.append(f"### `{tool.name}`")
-                lines.append(f"{tool.description}\n")
-                if tool.parameters:
-                    lines.append("**Parameters:**")
-                    for param in tool.parameters:
-                        req = "(required)" if param.required else "(optional)"
-                        lines.append(f"- `{param.name}` ({param.type}) {req}: {param.description}")
-                lines.append(f"\n**Returns:** {tool.returns}\n")
+        for category in ToolCategory:
+            if category in by_category:
+                lines.append(f"\n## {category.value.title()}\n")
+                for tool in by_category[category]:
+                    lines.append(f"### {tool.name}")
+                    lines.append(f"{tool.description}\n")
+                    if tool.parameters:
+                        lines.append("**Parameters:**")
+                        for param in tool.parameters:
+                            req = "(required)" if param.required else "(optional)"
+                            lines.append(f"- `{param.name}` ({param.type}) {req}: {param.description}")
+                    lines.append(f"\n**Returns:** {tool.returns}\n")
         
         return "\n".join(lines)
     
     def _register_all_tools(self) -> None:
         """Register all Phase 1 tools."""
-        # Import here to avoid circular imports
+        
+        # Import calculation functions
         from finanalyst_tools.calculations.profitability import (
             calculate_gross_profit_margin,
             calculate_operating_profit_margin,
@@ -277,7 +314,6 @@ class ToolRegistry:
             calculate_ebitda_margin,
             calculate_return_on_assets,
             calculate_return_on_equity,
-            calculate_return_on_capital_employed,
         )
         from finanalyst_tools.calculations.liquidity import (
             calculate_current_ratio,
@@ -289,75 +325,151 @@ class ToolRegistry:
             validate_financial_data_completeness,
         )
         
-        # Validation Tools
+        # ================================================================
+        # VALIDATION TOOLS
+        # ================================================================
+        
         self.register(ToolDefinition(
             name="validate_financial_data",
-            description="Validate that financial data is complete and properly structured for the requested analysis type",
+            description="Validate that financial data is complete and correct for a specific analysis type",
             category=ToolCategory.VALIDATION,
             parameters=[
-                ToolParameter("income_statement", "object", "Income statement data", required=False),
-                ToolParameter("balance_sheet", "object", "Balance sheet data", required=False),
-                ToolParameter("cash_flow", "object", "Cash flow statement data", required=False),
-                ToolParameter("analysis_type", "string", "Type of analysis to validate for", 
-                            required=True, enum=["profitability", "liquidity", "solvency", "efficiency", "comprehensive"]),
+                ToolParameter(
+                    name="income_statement",
+                    type="object",
+                    description="Income statement data with revenue, COGS, expenses, and net income",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="balance_sheet",
+                    type="object",
+                    description="Balance sheet data with assets, liabilities, and equity",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="cash_flow",
+                    type="object",
+                    description="Cash flow statement data",
+                    required=False,
+                ),
+                ToolParameter(
+                    name="analysis_type",
+                    type="string",
+                    description="Type of analysis to validate for",
+                    required=True,
+                    enum=["profitability", "liquidity", "solvency", "efficiency", "comprehensive"],
+                ),
             ],
             returns="ValidationResult with any issues found",
+            example="validate_financial_data(income_statement={...}, balance_sheet={...}, analysis_type='profitability')",
             function=validate_financial_data_completeness,
-            example='validate_financial_data(income_statement={...}, balance_sheet={...}, analysis_type="profitability")',
         ))
         
-        # Profitability Tools
+        # ================================================================
+        # PROFITABILITY TOOLS
+        # ================================================================
+        
         self.register(ToolDefinition(
             name="calculate_gross_profit_margin",
-            description="Calculate Gross Profit Margin: (Revenue - COGS) / Revenue × 100",
+            description="Calculate gross profit margin: (Revenue - COGS) / Revenue × 100",
             category=ToolCategory.PROFITABILITY,
             parameters=[
-                ToolParameter("revenue", "number", "Total revenue or net sales"),
-                ToolParameter("cost_of_goods_sold", "number", "Cost of goods sold"),
+                ToolParameter(
+                    name="revenue",
+                    type="number",
+                    description="Total revenue / net sales",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="cost_of_goods_sold",
+                    type="number",
+                    description="Cost of goods sold / cost of sales",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with margin percentage and audit trail",
-            function=calculate_gross_profit_margin,
+            returns="CalculationResult with gross profit margin percentage and calculation steps",
             example="calculate_gross_profit_margin(revenue=1000000, cost_of_goods_sold=600000)",
+            function=calculate_gross_profit_margin,
         ))
         
         self.register(ToolDefinition(
             name="calculate_operating_profit_margin",
-            description="Calculate Operating Profit Margin: (Revenue - COGS - OpEx) / Revenue × 100",
+            description="Calculate operating profit margin: (Revenue - COGS - OpEx) / Revenue × 100",
             category=ToolCategory.PROFITABILITY,
             parameters=[
-                ToolParameter("revenue", "number", "Total revenue"),
-                ToolParameter("cost_of_goods_sold", "number", "Cost of goods sold"),
-                ToolParameter("operating_expenses", "number", "Total operating expenses", required=False),
-                ToolParameter("selling_general_admin", "number", "SG&A expenses", required=False),
-                ToolParameter("marketing_expenses", "number", "Marketing expenses", required=False),
-                ToolParameter("research_development", "number", "R&D expenses", required=False),
-                ToolParameter("depreciation_amortization", "number", "D&A", required=False),
+                ToolParameter(
+                    name="revenue",
+                    type="number",
+                    description="Total revenue",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="cost_of_goods_sold",
+                    type="number",
+                    description="Cost of goods sold",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="operating_expenses",
+                    type="number",
+                    description="Total operating expenses",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="marketing_expenses",
+                    type="number",
+                    description="Marketing expenses (if separate from OpEx)",
+                    required=False,
+                ),
             ],
-            returns="CalculationResult with margin percentage and audit trail",
+            returns="CalculationResult with operating margin percentage and calculation steps",
+            example="calculate_operating_profit_margin(revenue=1000000, cost_of_goods_sold=600000, operating_expenses=200000)",
             function=calculate_operating_profit_margin,
         ))
         
         self.register(ToolDefinition(
             name="calculate_net_profit_margin",
-            description="Calculate Net Profit Margin: Net Income / Revenue × 100",
+            description="Calculate net profit margin: Net Income / Revenue × 100",
             category=ToolCategory.PROFITABILITY,
             parameters=[
-                ToolParameter("revenue", "number", "Total revenue"),
-                ToolParameter("net_income", "number", "Net income / net profit"),
+                ToolParameter(
+                    name="revenue",
+                    type="number",
+                    description="Total revenue",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="net_income",
+                    type="number",
+                    description="Net income (bottom line profit)",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with margin percentage and audit trail",
+            returns="CalculationResult with net margin percentage and calculation steps",
+            example="calculate_net_profit_margin(revenue=1000000, net_income=100000)",
             function=calculate_net_profit_margin,
         ))
         
         self.register(ToolDefinition(
             name="calculate_ebitda_margin",
-            description="Calculate EBITDA Margin: EBITDA / Revenue × 100",
+            description="Calculate EBITDA margin: EBITDA / Revenue × 100",
             category=ToolCategory.PROFITABILITY,
             parameters=[
-                ToolParameter("revenue", "number", "Total revenue"),
-                ToolParameter("ebitda", "number", "EBITDA"),
+                ToolParameter(
+                    name="revenue",
+                    type="number",
+                    description="Total revenue",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="ebitda",
+                    type="number",
+                    description="EBITDA (Earnings Before Interest, Taxes, Depreciation, Amortization)",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with margin percentage and audit trail",
+            returns="CalculationResult with EBITDA margin percentage",
+            example="calculate_ebitda_margin(revenue=1000000, ebitda=250000)",
             function=calculate_ebitda_margin,
         ))
         
@@ -366,11 +478,27 @@ class ToolRegistry:
             description="Calculate ROA: Net Income / Average Total Assets × 100",
             category=ToolCategory.PROFITABILITY,
             parameters=[
-                ToolParameter("net_income", "number", "Net income for the period"),
-                ToolParameter("total_assets_begin", "number", "Total assets at period start"),
-                ToolParameter("total_assets_end", "number", "Total assets at period end", required=False),
+                ToolParameter(
+                    name="net_income",
+                    type="number",
+                    description="Net income for the period",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="total_assets_beginning",
+                    type="number",
+                    description="Total assets at beginning of period",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="total_assets_ending",
+                    type="number",
+                    description="Total assets at end of period",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with ROA percentage and audit trail",
+            returns="CalculationResult with ROA percentage",
+            example="calculate_return_on_assets(net_income=100000, total_assets_beginning=500000, total_assets_ending=550000)",
             function=calculate_return_on_assets,
         ))
         
@@ -379,75 +507,129 @@ class ToolRegistry:
             description="Calculate ROE: Net Income / Average Shareholders' Equity × 100",
             category=ToolCategory.PROFITABILITY,
             parameters=[
-                ToolParameter("net_income", "number", "Net income for the period"),
-                ToolParameter("shareholders_equity_begin", "number", "Equity at period start"),
-                ToolParameter("shareholders_equity_end", "number", "Equity at period end", required=False),
+                ToolParameter(
+                    name="net_income",
+                    type="number",
+                    description="Net income for the period",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="equity_beginning",
+                    type="number",
+                    description="Shareholders' equity at beginning of period",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="equity_ending",
+                    type="number",
+                    description="Shareholders' equity at end of period",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with ROE percentage and audit trail",
+            returns="CalculationResult with ROE percentage",
+            example="calculate_return_on_equity(net_income=100000, equity_beginning=300000, equity_ending=350000)",
             function=calculate_return_on_equity,
         ))
         
-        self.register(ToolDefinition(
-            name="calculate_return_on_capital_employed",
-            description="Calculate ROCE: EBIT / (Total Assets - Current Liabilities) × 100",
-            category=ToolCategory.PROFITABILITY,
-            parameters=[
-                ToolParameter("ebit", "number", "Earnings Before Interest and Taxes"),
-                ToolParameter("total_assets", "number", "Total assets"),
-                ToolParameter("current_liabilities", "number", "Current liabilities"),
-            ],
-            returns="CalculationResult with ROCE percentage and audit trail",
-            function=calculate_return_on_capital_employed,
-        ))
+        # ================================================================
+        # LIQUIDITY TOOLS
+        # ================================================================
         
-        # Liquidity Tools
         self.register(ToolDefinition(
             name="calculate_current_ratio",
-            description="Calculate Current Ratio: Current Assets / Current Liabilities",
+            description="Calculate current ratio: Current Assets / Current Liabilities",
             category=ToolCategory.LIQUIDITY,
             parameters=[
-                ToolParameter("current_assets", "number", "Total current assets"),
-                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+                ToolParameter(
+                    name="current_assets",
+                    type="number",
+                    description="Total current assets",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="current_liabilities",
+                    type="number",
+                    description="Total current liabilities",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with ratio value and interpretation",
+            returns="CalculationResult with current ratio and interpretation",
+            example="calculate_current_ratio(current_assets=500000, current_liabilities=300000)",
             function=calculate_current_ratio,
         ))
         
         self.register(ToolDefinition(
             name="calculate_quick_ratio",
-            description="Calculate Quick Ratio: (Current Assets - Inventory) / Current Liabilities",
+            description="Calculate quick ratio (acid test): (Current Assets - Inventory) / Current Liabilities",
             category=ToolCategory.LIQUIDITY,
             parameters=[
-                ToolParameter("current_assets", "number", "Total current assets"),
-                ToolParameter("inventory", "number", "Inventory value"),
-                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+                ToolParameter(
+                    name="current_assets",
+                    type="number",
+                    description="Total current assets",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="inventory",
+                    type="number",
+                    description="Inventory value",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="current_liabilities",
+                    type="number",
+                    description="Total current liabilities",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with ratio value and interpretation",
+            returns="CalculationResult with quick ratio",
+            example="calculate_quick_ratio(current_assets=500000, inventory=150000, current_liabilities=300000)",
             function=calculate_quick_ratio,
         ))
         
         self.register(ToolDefinition(
             name="calculate_cash_ratio",
-            description="Calculate Cash Ratio: Cash and Equivalents / Current Liabilities",
+            description="Calculate cash ratio: Cash and Equivalents / Current Liabilities",
             category=ToolCategory.LIQUIDITY,
             parameters=[
-                ToolParameter("cash_and_equivalents", "number", "Cash and cash equivalents"),
-                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+                ToolParameter(
+                    name="cash_and_equivalents",
+                    type="number",
+                    description="Cash and cash equivalents",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="current_liabilities",
+                    type="number",
+                    description="Total current liabilities",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with ratio value and interpretation",
+            returns="CalculationResult with cash ratio",
+            example="calculate_cash_ratio(cash_and_equivalents=100000, current_liabilities=300000)",
             function=calculate_cash_ratio,
         ))
         
         self.register(ToolDefinition(
             name="calculate_working_capital",
-            description="Calculate Working Capital: Current Assets - Current Liabilities",
+            description="Calculate working capital: Current Assets - Current Liabilities",
             category=ToolCategory.LIQUIDITY,
             parameters=[
-                ToolParameter("current_assets", "number", "Total current assets"),
-                ToolParameter("current_liabilities", "number", "Total current liabilities"),
-                ToolParameter("currency", "string", "Currency code", required=False, default="SGD"),
+                ToolParameter(
+                    name="current_assets",
+                    type="number",
+                    description="Total current assets",
+                    required=True,
+                ),
+                ToolParameter(
+                    name="current_liabilities",
+                    type="number",
+                    description="Total current liabilities",
+                    required=True,
+                ),
             ],
-            returns="CalculationResult with currency value",
+            returns="CalculationResult with working capital amount",
+            example="calculate_working_capital(current_assets=500000, current_liabilities=300000)",
             function=calculate_working_capital,
         ))
 

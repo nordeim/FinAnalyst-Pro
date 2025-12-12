@@ -2,7 +2,14 @@
 """
 Analysis pipeline implementing the mandatory 5-phase workflow.
 
-REQUEST → [1.VALIDATE] → [2.ANALYZE] → [3.CALCULATE] → [4.INTERPRET] → [5.VERIFY] → DELIVER
+Phases:
+1. VALIDATE - Schema validation, completeness check
+2. ANALYZE - Identify what to calculate based on data
+3. CALCULATE - Execute calculations with audit trail
+4. INTERPRET - Add context and insights
+5. VERIFY - Pre-delivery checks
+
+This ensures consistent, auditable analysis execution.
 """
 
 from __future__ import annotations
@@ -22,24 +29,22 @@ from finanalyst_tools.models.analysis_results import (
     MetricCategory,
     MetricCollection,
     ComprehensiveAnalysisResult,
-    ConfidenceAssessment,
+    CalculationResult,
 )
 from finanalyst_tools.models.validation import (
     ValidationResult,
     ReconciliationResult,
     PlausibilityResult,
 )
-from finanalyst_tools.validation import (
+from finanalyst_tools.validation.schema_validator import (
     validate_statement_set,
-    run_all_reconciliations,
-    check_all_plausibility,
+    validate_financial_data_completeness,
 )
-from finanalyst_tools.calculations import (
-    calculate_all_profitability_metrics,
-    calculate_all_liquidity_metrics,
-)
+from finanalyst_tools.validation.reconciliation import run_all_reconciliations
+from finanalyst_tools.validation.plausibility import check_all_plausibility
+from finanalyst_tools.calculations.profitability import calculate_all_profitability_metrics
+from finanalyst_tools.calculations.liquidity import calculate_all_liquidity_metrics
 from finanalyst_tools.orchestration.confidence_scorer import calculate_confidence_level
-from finanalyst_tools.orchestration.report_generator import generate_financial_report
 
 
 class AnalysisPhase(str, Enum):
@@ -49,7 +54,6 @@ class AnalysisPhase(str, Enum):
     CALCULATE = "calculate"
     INTERPRET = "interpret"
     VERIFY = "verify"
-    DELIVER = "deliver"
 
 
 @dataclass
@@ -58,64 +62,46 @@ class AnalysisRequest:
     Request for financial analysis.
     
     Attributes:
-        statement_set: Complete financial statements
-        analysis_types: List of analysis categories to perform
-        prior_statement_set: Prior period for comparisons (optional)
+        statement_set: Financial statements to analyze
+        prior_statement_set: Prior period statements (optional)
+        analysis_type: Type of analysis requested
         include_trends: Whether to include trend analysis
-        strict_validation: Whether to fail on validation warnings
+        currency: Currency for reporting
     """
     statement_set: FinancialStatementSet
-    analysis_types: list[str] = field(default_factory=lambda: ["profitability", "liquidity"])
     prior_statement_set: FinancialStatementSet | None = None
+    analysis_type: str = "comprehensive"
     include_trends: bool = False
-    strict_validation: bool = False
-    
-    @property
-    def period(self) -> str:
-        """Get the analysis period as string."""
-        return str(self.statement_set.period)
-    
-    @property
-    def currency(self) -> str:
-        """Get the currency."""
-        return self.statement_set.currency
+    currency: str = "SGD"
 
 
 @dataclass
 class PipelineState:
-    """Internal state tracking for the pipeline."""
+    """
+    Internal state of the pipeline during execution.
+    """
     current_phase: AnalysisPhase = AnalysisPhase.VALIDATE
     validation_result: ValidationResult | None = None
     reconciliation_result: ReconciliationResult | None = None
     plausibility_result: PlausibilityResult | None = None
     metric_collections: list[MetricCollection] = field(default_factory=list)
-    all_metrics: list = field(default_factory=list)
-    confidence: ConfidenceAssessment | None = None
-    recommendations: list[str] = field(default_factory=list)
+    all_metrics: list[CalculationResult] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
-    
-    @property
-    def can_proceed(self) -> bool:
-        """Check if pipeline can proceed to next phase."""
-        if self.validation_result:
-            return self.validation_result.can_proceed
-        return True
+    warnings: list[str] = field(default_factory=list)
+    phase_completed: dict[AnalysisPhase, bool] = field(default_factory=dict)
 
 
 class AnalysisPipeline:
     """
-    Orchestrates the 5-phase analysis workflow.
+    Pipeline for executing financial analysis.
     
-    Ensures all mandatory steps are executed in order:
-    1. VALIDATE - Cannot be skipped
-    2. ANALYZE - Plan calculations
-    3. CALCULATE - Execute with audit trails
-    4. INTERPRET - Add context
-    5. VERIFY - Final checks
+    Implements the mandatory 5-phase workflow:
+    REQUEST → [1.VALIDATE] → [2.ANALYZE] → [3.CALCULATE] → [4.INTERPRET] → [5.VERIFY] → DELIVER
     """
     
     def __init__(self):
-        self.state = PipelineState()
+        """Initialize the pipeline."""
+        self.state: PipelineState | None = None
     
     def execute(self, request: AnalysisRequest) -> ComprehensiveAnalysisResult:
         """
@@ -125,22 +111,21 @@ class AnalysisPipeline:
             request: Analysis request with financial data
             
         Returns:
-            ComprehensiveAnalysisResult with all findings
+            ComprehensiveAnalysisResult with all analysis outputs
         """
-        # Reset state
+        # Initialize state
         self.state = PipelineState()
         
-        # Phase 1: VALIDATE (mandatory)
+        # Phase 1: VALIDATE
         self._phase_validate(request)
-        
-        if not self.state.can_proceed:
-            return self._create_validation_failure_result(request)
+        if not self.state.validation_result.can_proceed:
+            return self._create_error_result(request, "Validation failed")
         
         # Phase 2: ANALYZE
-        self._phase_analyze(request)
+        analysis_plan = self._phase_analyze(request)
         
         # Phase 3: CALCULATE
-        self._phase_calculate(request)
+        self._phase_calculate(request, analysis_plan)
         
         # Phase 4: INTERPRET
         self._phase_interpret(request)
@@ -148,184 +133,255 @@ class AnalysisPipeline:
         # Phase 5: VERIFY
         self._phase_verify(request)
         
-        # DELIVER
+        # Create final result
         return self._create_result(request)
     
     def _phase_validate(self, request: AnalysisRequest) -> None:
         """
-        Phase 1: Validate input data.
+        Phase 1: VALIDATE
         
         - Schema validation
-        - Completeness check
+        - Data completeness check
         - Cross-statement reconciliation
         """
         self.state.current_phase = AnalysisPhase.VALIDATE
         
-        # Schema and completeness validation
-        analysis_type = request.analysis_types[0] if request.analysis_types else "comprehensive"
-        self.state.validation_result = validate_statement_set(
+        # Schema validation
+        validation = validate_statement_set(
             request.statement_set,
-            analysis_type,
+            request.analysis_type,
         )
+        self.state.validation_result = validation
         
-        # Cross-statement reconciliation
-        prior_bs = request.prior_statement_set.balance_sheet if request.prior_statement_set else None
-        self.state.reconciliation_result = run_all_reconciliations(
+        if not validation.can_proceed:
+            self.state.errors.append("Schema validation failed")
+            return
+        
+        # Reconciliation (if cash flow available)
+        prior_bs = None
+        if request.prior_statement_set:
+            prior_bs = request.prior_statement_set.balance_sheet
+        
+        reconciliation = run_all_reconciliations(
             request.statement_set,
             prior_balance_sheet=prior_bs,
         )
+        self.state.reconciliation_result = reconciliation
         
-        # Convert reconciliation failures to validation issues
-        if not self.state.reconciliation_result.all_passed:
-            recon_validation = self.state.reconciliation_result.to_validation_result()
-            self.state.validation_result.merge(recon_validation)
+        if not reconciliation.all_passed:
+            for check in reconciliation.failed_checks:
+                self.state.warnings.append(f"Reconciliation: {check.message}")
+        
+        self.state.phase_completed[AnalysisPhase.VALIDATE] = True
     
-    def _phase_analyze(self, request: AnalysisRequest) -> None:
+    def _phase_analyze(self, request: AnalysisRequest) -> dict[str, bool]:
         """
-        Phase 2: Analyze what calculations to perform.
+        Phase 2: ANALYZE
         
-        - Determine available data
-        - Plan calculation sequence
+        Determine what calculations to perform based on:
+        - Analysis type requested
+        - Data available
+        
+        Returns:
+            Dictionary of metric categories to calculate
         """
         self.state.current_phase = AnalysisPhase.ANALYZE
-        # Analysis planning is implicit in the calculation phase
-        # Future: Could add more sophisticated dependency analysis
-    
-    def _phase_calculate(self, request: AnalysisRequest) -> None:
-        """
-        Phase 3: Execute calculations.
         
-        - Run all requested metric calculations
-        - Capture audit trails
+        analysis_plan = {
+            "profitability": False,
+            "liquidity": False,
+            "solvency": False,
+            "efficiency": False,
+        }
+        
+        analysis_type = request.analysis_type.lower()
+        
+        if analysis_type in ("profitability", "comprehensive"):
+            analysis_plan["profitability"] = True
+        
+        if analysis_type in ("liquidity", "comprehensive"):
+            analysis_plan["liquidity"] = True
+        
+        if analysis_type in ("solvency", "comprehensive"):
+            analysis_plan["solvency"] = True
+        
+        if analysis_type in ("efficiency", "comprehensive"):
+            analysis_plan["efficiency"] = True
+        
+        self.state.phase_completed[AnalysisPhase.ANALYZE] = True
+        return analysis_plan
+    
+    def _phase_calculate(
+        self,
+        request: AnalysisRequest,
+        analysis_plan: dict[str, bool],
+    ) -> None:
+        """
+        Phase 3: CALCULATE
+        
+        Execute all planned calculations.
         """
         self.state.current_phase = AnalysisPhase.CALCULATE
         
-        prior_bs = request.prior_statement_set.balance_sheet if request.prior_statement_set else None
+        prior_bs = None
+        if request.prior_statement_set:
+            prior_bs = request.prior_statement_set.balance_sheet
         
-        for analysis_type in request.analysis_types:
-            if analysis_type.lower() == "profitability":
-                collection = calculate_all_profitability_metrics(
-                    income_statement=request.statement_set.income_statement,
-                    balance_sheet=request.statement_set.balance_sheet,
-                    prior_balance_sheet=prior_bs,
-                )
-                self.state.metric_collections.append(collection)
-                self.state.all_metrics.extend(collection.metrics)
-            
-            elif analysis_type.lower() == "liquidity":
-                collection = calculate_all_liquidity_metrics(
-                    balance_sheet=request.statement_set.balance_sheet,
-                )
-                self.state.metric_collections.append(collection)
-                self.state.all_metrics.extend(collection.metrics)
+        # Profitability metrics
+        if analysis_plan.get("profitability"):
+            profitability = calculate_all_profitability_metrics(
+                income_statement=request.statement_set.income_statement,
+                balance_sheet=request.statement_set.balance_sheet,
+                prior_balance_sheet=prior_bs,
+            )
+            self.state.metric_collections.append(profitability)
+            self.state.all_metrics.extend(profitability.metrics)
+        
+        # Liquidity metrics
+        if analysis_plan.get("liquidity"):
+            liquidity = calculate_all_liquidity_metrics(
+                balance_sheet=request.statement_set.balance_sheet,
+            )
+            self.state.metric_collections.append(liquidity)
+            self.state.all_metrics.extend(liquidity.metrics)
+        
+        # Note: Solvency and Efficiency calculations would be added in Phase 2
+        
+        self.state.phase_completed[AnalysisPhase.CALCULATE] = True
     
     def _phase_interpret(self, request: AnalysisRequest) -> None:
         """
-        Phase 4: Interpret results.
+        Phase 4: INTERPRET
         
-        - Run plausibility checks
-        - Generate recommendations
+        Add context and insights to calculated metrics.
         """
         self.state.current_phase = AnalysisPhase.INTERPRET
         
-        # Plausibility checks
-        self.state.plausibility_result = check_all_plausibility(self.state.all_metrics)
+        # Plausibility checks on all metrics
+        plausibility = check_all_plausibility(self.state.all_metrics)
+        self.state.plausibility_result = plausibility
         
-        # Generate recommendations based on findings
-        self._generate_recommendations(request)
+        # Add warnings for implausible values
+        for check in plausibility.implausible_checks:
+            self.state.warnings.append(f"Plausibility: {check.message}")
+        
+        self.state.phase_completed[AnalysisPhase.INTERPRET] = True
     
     def _phase_verify(self, request: AnalysisRequest) -> None:
         """
-        Phase 5: Verify results before delivery.
+        Phase 5: VERIFY
         
-        - Calculate confidence score
-        - Final quality checks
+        Pre-delivery checks:
+        - Ensure all requested calculations completed
+        - Verify no critical errors
+        - Final quality check
         """
         self.state.current_phase = AnalysisPhase.VERIFY
         
-        # Calculate data completeness
-        total_metrics = len(self.state.all_metrics)
-        calculable_metrics = sum(1 for m in self.state.all_metrics if m.value is not None)
-        completeness = calculable_metrics / total_metrics if total_metrics > 0 else 0.0
+        # Check that calculations were performed
+        if not self.state.metric_collections:
+            self.state.warnings.append("No metrics were calculated")
         
-        # Calculate confidence
-        self.state.confidence = calculate_confidence_level(
-            validation_result=self.state.validation_result,
-            plausibility_result=self.state.plausibility_result,
-            reconciliation_result=self.state.reconciliation_result,
-            data_completeness=completeness,
-        )
-    
-    def _generate_recommendations(self, request: AnalysisRequest) -> None:
-        """Generate recommendations based on analysis results."""
-        recommendations = []
+        # Check for any uncalculable metrics
+        uncalculable = [m for m in self.state.all_metrics if m.value is None]
+        if uncalculable:
+            for m in uncalculable:
+                self.state.warnings.append(f"Could not calculate: {m.metric_name}")
         
-        for metric in self.state.all_metrics:
-            if not metric.is_plausible:
-                recommendations.append(
-                    f"Review data accuracy for {metric.metric_name} - value appears unusual"
-                )
-            
-            for warning in metric.warnings:
-                if "liquidity risk" in warning.lower():
-                    recommendations.append(
-                        "Consider strategies to improve short-term liquidity position"
-                    )
-                elif "negative" in warning.lower() and "working capital" in metric.metric_name.lower():
-                    recommendations.append(
-                        "Address negative working capital to reduce financial risk"
-                    )
-        
-        # Deduplicate
-        self.state.recommendations = list(dict.fromkeys(recommendations))
+        self.state.phase_completed[AnalysisPhase.VERIFY] = True
     
     def _create_result(self, request: AnalysisRequest) -> ComprehensiveAnalysisResult:
         """Create the final analysis result."""
-        return ComprehensiveAnalysisResult(
-            analysis_type=", ".join(request.analysis_types),
-            period=request.period,
+        
+        # Calculate confidence
+        data_completeness = 1.0
+        if self.state.validation_result:
+            total_issues = self.state.validation_result.total_issue_count
+            data_completeness = max(0.0, 1.0 - (total_issues * 0.1))
+        
+        confidence = calculate_confidence_level(
+            validation_result=self.state.validation_result,
+            plausibility_result=self.state.plausibility_result,
+            reconciliation_result=self.state.reconciliation_result,
+            data_completeness=data_completeness,
+        )
+        
+        # Build result
+        result = ComprehensiveAnalysisResult(
+            analysis_type=request.analysis_type,
+            period=str(request.statement_set.period),
             currency=request.currency,
             metric_collections=self.state.metric_collections,
-            confidence=self.state.confidence,
-            validation_summary=self.state.validation_result.to_dict() if self.state.validation_result else {},
-            reconciliation_summary=self.state.reconciliation_result.to_dict() if self.state.reconciliation_result else {},
-            recommendations=self.state.recommendations,
+            confidence=confidence,
         )
-    
-    def _create_validation_failure_result(self, request: AnalysisRequest) -> ComprehensiveAnalysisResult:
-        """Create a result for validation failure."""
-        result = ComprehensiveAnalysisResult(
-            analysis_type=", ".join(request.analysis_types),
-            period=request.period,
-            currency=request.currency,
-            validation_summary=self.state.validation_result.to_dict() if self.state.validation_result else {},
-            reconciliation_summary=self.state.reconciliation_result.to_dict() if self.state.reconciliation_result else {},
-        )
-        result.add_recommendation("Fix validation errors before proceeding with analysis")
-        return result
-
-
-def run_analysis(
-    statement_set: FinancialStatementSet,
-    analysis_types: list[str] | None = None,
-    prior_statement_set: FinancialStatementSet | None = None,
-) -> ComprehensiveAnalysisResult:
-    """
-    Convenience function to run the full analysis pipeline.
-    
-    Args:
-        statement_set: Financial statements to analyze
-        analysis_types: Types of analysis to perform (default: profitability, liquidity)
-        prior_statement_set: Prior period data for comparisons
         
-    Returns:
-        ComprehensiveAnalysisResult with all findings
-    """
-    request = AnalysisRequest(
-        statement_set=statement_set,
-        analysis_types=analysis_types or ["profitability", "liquidity"],
-        prior_statement_set=prior_statement_set,
-    )
+        # Add validation summary
+        if self.state.validation_result:
+            result.validation_summary = self.state.validation_result.to_dict()
+        
+        # Add reconciliation summary
+        if self.state.reconciliation_result:
+            result.reconciliation_summary = self.state.reconciliation_result.to_dict()
+        
+        # Add recommendations based on findings
+        result.recommendations = self._generate_recommendations()
+        
+        return result
     
-    pipeline = AnalysisPipeline()
-    return pipeline.execute(request)
+    def _create_error_result(
+        self,
+        request: AnalysisRequest,
+        error_message: str,
+    ) -> ComprehensiveAnalysisResult:
+        """Create an error result when pipeline fails."""
+        result = ComprehensiveAnalysisResult(
+            analysis_type=request.analysis_type,
+            period=str(request.statement_set.period),
+            currency=request.currency,
+        )
+        
+        if self.state.validation_result:
+            result.validation_summary = self.state.validation_result.to_dict()
+        
+        result.recommendations = [
+            f"Analysis could not be completed: {error_message}",
+            "Please address validation errors and retry",
+        ]
+        
+        return result
+    
+    def _generate_recommendations(self) -> list[str]:
+        """Generate recommendations based on analysis findings."""
+        recommendations = []
+        
+        # Based on profitability
+        for collection in self.state.metric_collections:
+            if collection.category == MetricCategory.PROFITABILITY:
+                npm = collection.get_metric("Net Profit Margin")
+                if npm and npm.value is not None:
+                    if npm.value < Decimal("5"):
+                        recommendations.append(
+                            "Net profit margin is low (<5%). Consider reviewing cost structure."
+                        )
+                    elif npm.value > Decimal("20"):
+                        recommendations.append(
+                            "Strong net profit margin (>20%). Consider reinvestment opportunities."
+                        )
+        
+        # Based on liquidity
+        for collection in self.state.metric_collections:
+            if collection.category == MetricCategory.LIQUIDITY:
+                cr = collection.get_metric("Current Ratio")
+                if cr and cr.value is not None:
+                    if cr.value < Decimal("1"):
+                        recommendations.append(
+                            "Current ratio below 1.0 indicates liquidity risk. Review working capital management."
+                        )
+        
+        # Default recommendation if none generated
+        if not recommendations:
+            recommendations.append(
+                "Financial metrics are within normal ranges. Continue monitoring key indicators."
+            )
+        
+        return recommendations

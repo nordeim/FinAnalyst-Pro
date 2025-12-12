@@ -1,12 +1,12 @@
 # finanalyst_tools/dispatcher.py
 """
-Tool call dispatcher for executing tools from LLM requests.
+Tool dispatcher for executing tool calls from LLM.
 
 Provides:
 - Parameter validation and type coercion
 - Execution timing
 - Error handling and formatting
-- Structured result output
+- Structured result formatting
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from typing import Any
 import json
 import time
 
-from finanalyst_tools.tool_registry import TOOL_REGISTRY, ToolDefinition
+from finanalyst_tools.tool_registry import TOOL_REGISTRY, ToolDefinition, ToolParameter
 from finanalyst_tools.exceptions import (
     ToolNotFoundError,
     ToolExecutionError,
@@ -33,8 +33,8 @@ class ToolCallResult:
     
     Attributes:
         tool_name: Name of the executed tool
-        success: Whether execution was successful
-        result: The result data (if successful)
+        success: Whether execution succeeded
+        result: The result (if successful)
         error: Error message (if failed)
         error_details: Additional error context
         execution_time_ms: Execution time in milliseconds
@@ -43,7 +43,7 @@ class ToolCallResult:
     success: bool
     result: Any = None
     error: str | None = None
-    error_details: dict[str, Any] = field(default_factory=dict)
+    error_details: dict[str, Any] | None = None
     execution_time_ms: float | None = None
     
     def to_dict(self) -> dict[str, Any]:
@@ -54,11 +54,8 @@ class ToolCallResult:
         }
         
         if self.success:
-            # Serialize result
             if hasattr(self.result, "to_dict"):
                 data["result"] = self.result.to_dict()
-            elif isinstance(self.result, Decimal):
-                data["result"] = float(self.result)
             else:
                 data["result"] = self.result
         else:
@@ -74,11 +71,6 @@ class ToolCallResult:
     def to_json(self) -> str:
         """Convert to JSON string."""
         return json.dumps(self.to_dict(), indent=2, default=str)
-    
-    def __str__(self) -> str:
-        if self.success:
-            return f"✅ {self.tool_name}: Success ({self.execution_time_ms:.1f}ms)"
-        return f"❌ {self.tool_name}: {self.error}"
 
 
 class ToolDispatcher:
@@ -87,12 +79,14 @@ class ToolDispatcher:
     
     Handles:
     - Tool lookup
-    - Parameter validation and coercion
+    - Parameter validation
+    - Type coercion (string → Decimal for numbers)
     - Execution with timing
     - Error handling
     """
     
     def __init__(self):
+        """Initialize the dispatcher."""
         self.registry = TOOL_REGISTRY
     
     def execute(
@@ -105,7 +99,7 @@ class ToolDispatcher:
         
         Args:
             tool_name: Name of the tool to execute
-            parameters: Parameters to pass to the tool
+            parameters: Dictionary of parameters
             
         Returns:
             ToolCallResult with execution outcome
@@ -116,16 +110,21 @@ class ToolDispatcher:
             # Get tool definition
             tool = self.registry.get(tool_name)
             if tool is None:
-                available = self.registry.get_tool_names()
-                raise ToolNotFoundError(tool_name, available_tools=available)
+                available = self.registry.list_tool_names()
+                raise ToolNotFoundError(tool_name, available)
             
-            # Validate and coerce parameters
+            # Validate parameters
             validated_params = self._validate_and_coerce_parameters(tool, parameters)
             
-            # Execute the tool function
+            # Execute the tool
+            if tool.function is None:
+                raise ToolExecutionError(
+                    tool_name=tool_name,
+                    original_error=ValueError("Tool function not registered"),
+                )
+            
             result = tool.function(**validated_params)
             
-            # Calculate execution time
             execution_time = (time.perf_counter() - start_time) * 1000
             
             return ToolCallResult(
@@ -135,42 +134,26 @@ class ToolDispatcher:
                 execution_time_ms=execution_time,
             )
             
-        except ToolNotFoundError as e:
-            return ToolCallResult(
-                tool_name=tool_name,
-                success=False,
-                error=str(e),
-                error_details=e.to_dict(),
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
-            )
-            
-        except ToolParameterError as e:
-            return ToolCallResult(
-                tool_name=tool_name,
-                success=False,
-                error=str(e),
-                error_details=e.to_dict(),
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
-            )
-            
         except FinAnalystError as e:
+            execution_time = (time.perf_counter() - start_time) * 1000
             return ToolCallResult(
                 tool_name=tool_name,
                 success=False,
                 error=str(e),
                 error_details=e.to_dict(),
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                execution_time_ms=execution_time,
             )
-            
         except Exception as e:
-            # Wrap unexpected errors
-            wrapped = ToolExecutionError(tool_name, e, parameters)
+            execution_time = (time.perf_counter() - start_time) * 1000
             return ToolCallResult(
                 tool_name=tool_name,
                 success=False,
-                error=str(wrapped),
-                error_details=wrapped.to_dict(),
-                execution_time_ms=(time.perf_counter() - start_time) * 1000,
+                error=f"Unexpected error: {str(e)}",
+                error_details={
+                    "error_type": type(e).__name__,
+                    "message": str(e),
+                },
+                execution_time_ms=execution_time,
             )
     
     def _validate_and_coerce_parameters(
@@ -179,11 +162,11 @@ class ToolDispatcher:
         parameters: dict[str, Any],
     ) -> dict[str, Any]:
         """
-        Validate parameters against tool definition and coerce types.
+        Validate and coerce parameters for a tool.
         
         Args:
             tool: Tool definition
-            parameters: Raw parameters from caller
+            parameters: Raw parameters
             
         Returns:
             Validated and coerced parameters
@@ -193,101 +176,111 @@ class ToolDispatcher:
         """
         result = {}
         
+        # Check required parameters
         for param in tool.parameters:
-            value = parameters.get(param.name)
-            
-            # Check required parameters
-            if value is None:
-                if param.required:
-                    raise ToolParameterError(
-                        tool_name=tool.name,
-                        parameter_name=param.name,
-                        message="Required parameter is missing",
-                        expected_type=param.type,
-                    )
-                elif param.default is not None:
-                    value = param.default
-                else:
-                    continue  # Optional with no default, skip
-            
-            # Coerce types
-            try:
-                coerced = self._coerce_value(value, param.type, param.name, tool.name)
-                result[param.name] = coerced
-            except (ValueError, TypeError, InvalidOperation) as e:
+            if param.required and param.name not in parameters:
                 raise ToolParameterError(
                     tool_name=tool.name,
                     parameter_name=param.name,
-                    message=f"Cannot convert value to {param.type}: {e}",
+                    message="Required parameter is missing",
                     expected_type=param.type,
-                    actual_value=value,
                 )
+        
+        # Validate and coerce each provided parameter
+        for param in tool.parameters:
+            if param.name in parameters:
+                value = parameters[param.name]
+                coerced = self._coerce_parameter(tool.name, param, value)
+                result[param.name] = coerced
+            elif param.default is not None:
+                result[param.name] = param.default
         
         return result
     
-    def _coerce_value(
+    def _coerce_parameter(
         self,
-        value: Any,
-        expected_type: str,
-        param_name: str,
         tool_name: str,
+        param: ToolParameter,
+        value: Any,
     ) -> Any:
         """
-        Coerce a value to the expected type.
+        Coerce a parameter value to the expected type.
         
         Args:
-            value: Value to coerce
-            expected_type: Expected type string
-            param_name: Parameter name (for error messages)
             tool_name: Tool name (for error messages)
+            param: Parameter definition
+            value: Raw value
             
         Returns:
             Coerced value
+            
+        Raises:
+            ToolParameterError: If coercion fails
         """
-        if expected_type == "number":
-            if isinstance(value, (int, float, Decimal)):
-                return Decimal(str(value))
-            if isinstance(value, str):
-                # Remove currency symbols and commas
-                cleaned = value.replace("$", "").replace(",", "").replace("S$", "").strip()
-                return Decimal(cleaned)
-            raise ValueError(f"Cannot convert {type(value).__name__} to number")
+        if value is None:
+            if param.required:
+                raise ToolParameterError(
+                    tool_name=tool_name,
+                    parameter_name=param.name,
+                    message="Value cannot be None",
+                    expected_type=param.type,
+                )
+            return param.default
         
-        elif expected_type == "integer":
-            if isinstance(value, int):
-                return value
-            if isinstance(value, (float, Decimal)):
+        try:
+            if param.type == "number":
+                # Convert to Decimal for financial precision
+                if isinstance(value, Decimal):
+                    return value
+                if isinstance(value, (int, float)):
+                    return Decimal(str(value))
+                if isinstance(value, str):
+                    return Decimal(value)
+                raise ValueError(f"Cannot convert {type(value).__name__} to number")
+                
+            elif param.type == "integer":
                 return int(value)
-            if isinstance(value, str):
-                return int(float(value))
-            raise ValueError(f"Cannot convert {type(value).__name__} to integer")
-        
-        elif expected_type == "string":
-            return str(value)
-        
-        elif expected_type == "boolean":
-            if isinstance(value, bool):
+                
+            elif param.type == "boolean":
+                if isinstance(value, bool):
+                    return value
+                if isinstance(value, str):
+                    return value.lower() in ("true", "1", "yes")
+                return bool(value)
+                
+            elif param.type == "string":
+                return str(value)
+                
+            elif param.type == "object":
+                if isinstance(value, dict):
+                    return value
+                if isinstance(value, str):
+                    return json.loads(value)
+                raise ValueError("Expected object/dictionary")
+                
+            elif param.type == "array":
+                if isinstance(value, list):
+                    return value
+                if isinstance(value, str):
+                    return json.loads(value)
+                raise ValueError("Expected array/list")
+                
+            else:
+                # Unknown type - pass through
                 return value
-            if isinstance(value, str):
-                return value.lower() in ("true", "yes", "1")
-            return bool(value)
-        
-        elif expected_type == "object":
-            if isinstance(value, dict):
-                return value
-            raise ValueError(f"Expected object, got {type(value).__name__}")
-        
-        elif expected_type == "array":
-            if isinstance(value, list):
-                return value
-            raise ValueError(f"Expected array, got {type(value).__name__}")
-        
-        # Unknown type, return as-is
-        return value
+                
+        except (ValueError, InvalidOperation, json.JSONDecodeError) as e:
+            raise ToolParameterError(
+                tool_name=tool_name,
+                parameter_name=param.name,
+                message=f"Cannot convert to {param.type}: {str(e)}",
+                expected_type=param.type,
+                actual_value=value,
+            )
     
-    def get_available_tools(self) -> list[str]:
-        """Get list of available tool names."""
-        return self.registry.get_tool_names()
+    def list_tools(self) -> list[str]:
+        """List all available tool names."""
+        return self.registry.list_tool_names()
     
     def get_tool_info(self, tool_name: str) -> dict[str, Any] | None:
         """Get information about a specific tool."""
@@ -297,23 +290,19 @@ class ToolDispatcher:
         return None
 
 
-def execute_tool(
-    tool_name: str,
-    parameters: dict[str, Any],
-) -> ToolCallResult:
+# Global singleton instance
+DISPATCHER = ToolDispatcher()
+
+
+def execute_tool(tool_name: str, parameters: dict[str, Any]) -> ToolCallResult:
     """
     Convenience function to execute a tool.
     
     Args:
-        tool_name: Name of the tool to execute
-        parameters: Parameters to pass to the tool
+        tool_name: Name of the tool
+        parameters: Tool parameters
         
     Returns:
-        ToolCallResult with execution outcome
+        ToolCallResult
     """
-    dispatcher = ToolDispatcher()
-    return dispatcher.execute(tool_name, parameters)
-
-
-# Global dispatcher instance
-DISPATCHER = ToolDispatcher()
+    return DISPATCHER.execute(tool_name, parameters)

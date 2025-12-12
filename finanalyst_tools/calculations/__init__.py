@@ -1,17 +1,23 @@
 # finanalyst_tools/calculations/__init__.py
 """
-Financial calculation modules for FinAnalyst-Pro Agent Tools.
+Financial calculation functions for FinAnalyst-Pro Agent Tools.
 
-Provides calculator functions for:
-- Profitability ratios (margins, returns)
-- Liquidity ratios (current, quick, cash)
-- More categories in future phases
+This package provides calculation functions for:
+- Profitability ratios (margins, ROA, ROE, etc.)
+- Liquidity ratios (current, quick, cash ratios)
+- Base infrastructure for consistent calculation handling
+
+All calculations:
+- Use Decimal precision for accuracy
+- Return CalculationResult with full audit trail
+- Include plausibility checks
+- Handle edge cases gracefully
 """
 
 from finanalyst_tools.calculations.base import (
     BaseCalculator,
     create_calculation_result,
-    format_step,
+    extract_decimal_value,
 )
 
 from finanalyst_tools.calculations.profitability import (
@@ -21,6 +27,7 @@ from finanalyst_tools.calculations.profitability import (
     calculate_ebitda_margin,
     calculate_return_on_assets,
     calculate_return_on_equity,
+    calculate_return_on_capital_employed,
     calculate_all_profitability_metrics,
     ProfitabilityCalculator,
 )
@@ -39,7 +46,7 @@ __all__ = [
     # Base
     "BaseCalculator",
     "create_calculation_result",
-    "format_step",
+    "extract_decimal_value",
     # Profitability
     "calculate_gross_profit_margin",
     "calculate_operating_profit_margin",
@@ -47,6 +54,7 @@ __all__ = [
     "calculate_ebitda_margin",
     "calculate_return_on_assets",
     "calculate_return_on_equity",
+    "calculate_return_on_capital_employed",
     "calculate_all_profitability_metrics",
     "ProfitabilityCalculator",
     # Liquidity

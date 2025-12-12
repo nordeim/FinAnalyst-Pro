@@ -3,13 +3,15 @@
 Confidence scoring for analysis results.
 
 Implements the mandatory confidence level assessment:
-**Confidence Level**: [HIGH | MEDIUM | LOW] — [Brief justification]
+- HIGH: Data quality excellent, all checks passed
+- MEDIUM: Some warnings but analysis reliable
+- LOW: Significant issues, interpret with caution
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from decimal import Decimal
 
 from finanalyst_tools.models.analysis_results import (
     ConfidenceLevel,
@@ -23,55 +25,148 @@ from finanalyst_tools.models.validation import (
 )
 
 
-@dataclass
-class ScoringFactors:
-    """Factors that influence confidence score."""
-    validation_score: float = 100.0
-    reconciliation_score: float = 100.0
-    plausibility_score: float = 100.0
-    completeness_score: float = 100.0
+def calculate_confidence_level(
+    validation_result: ValidationResult | None = None,
+    plausibility_result: PlausibilityResult | None = None,
+    reconciliation_result: ReconciliationResult | None = None,
+    data_completeness: float = 1.0,
+) -> ConfidenceAssessment:
+    """
+    Calculate confidence level for analysis results.
     
-    @property
-    def total_score(self) -> float:
-        """Calculate weighted total score."""
-        weights = {
-            "validation": 0.30,
-            "reconciliation": 0.25,
-            "plausibility": 0.25,
-            "completeness": 0.20,
-        }
-        return (
-            self.validation_score * weights["validation"] +
-            self.reconciliation_score * weights["reconciliation"] +
-            self.plausibility_score * weights["plausibility"] +
-            self.completeness_score * weights["completeness"]
-        )
+    Scoring factors:
+    - Validation warnings: -5 points each
+    - Validation errors: -20 points each (should not proceed)
+    - Implausible metrics: -10 points each
+    - Reconciliation failures: -15 points each
+    - Data completeness: Up to -30 points for missing data
+    
+    Thresholds:
+    - HIGH: Score >= 80
+    - MEDIUM: Score >= 50
+    - LOW: Score < 50
+    
+    Args:
+        validation_result: Schema validation result
+        plausibility_result: Plausibility check result
+        reconciliation_result: Reconciliation check result
+        data_completeness: Fraction of data present (0.0 to 1.0)
+        
+    Returns:
+        ConfidenceAssessment with level and justification
+    """
+    score = 100.0
+    factors: dict[str, str] = {}
+    
+    # Factor 1: Validation issues
+    if validation_result:
+        error_count = validation_result.error_count
+        warning_count = validation_result.warning_count
+        
+        if error_count > 0:
+            score -= error_count * 20
+            factors["validation_errors"] = f"{error_count} error(s) found"
+        
+        if warning_count > 0:
+            score -= warning_count * 5
+            factors["validation_warnings"] = f"{warning_count} warning(s) found"
+    
+    # Factor 2: Plausibility failures
+    if plausibility_result:
+        implausible = plausibility_result.implausible_count
+        if implausible > 0:
+            score -= implausible * 10
+            names = [c.metric_name for c in plausibility_result.implausible_checks[:3]]
+            factors["implausible_metrics"] = f"{implausible} metric(s) outside range: {', '.join(names)}"
+    
+    # Factor 3: Reconciliation failures
+    if reconciliation_result:
+        failed = reconciliation_result.failed_count
+        if failed > 0:
+            score -= failed * 15
+            names = [c.check_name for c in reconciliation_result.failed_checks[:3]]
+            factors["reconciliation_failures"] = f"{failed} check(s) failed: {', '.join(names)}"
+    
+    # Factor 4: Data completeness
+    if data_completeness < 1.0:
+        completeness_penalty = (1.0 - data_completeness) * 30
+        score -= completeness_penalty
+        factors["data_completeness"] = f"{data_completeness:.0%} of expected data present"
+    
+    # Ensure score is in valid range
+    score = max(0.0, min(100.0, score))
+    
+    # Determine level
+    if score >= 80:
+        level = ConfidenceLevel.HIGH
+    elif score >= 50:
+        level = ConfidenceLevel.MEDIUM
+    else:
+        level = ConfidenceLevel.LOW
+    
+    # Generate justification
+    justification = _generate_justification(level, factors, score)
+    
+    return ConfidenceAssessment(
+        level=level,
+        justification=justification,
+        factors=factors,
+        score=score,
+    )
+
+
+def _generate_justification(
+    level: ConfidenceLevel,
+    factors: dict[str, str],
+    score: float,
+) -> str:
+    """Generate human-readable justification for confidence level."""
+    
+    if level == ConfidenceLevel.HIGH:
+        if not factors:
+            return "All validation checks passed with no issues"
+        return f"Data quality is good with minor observations: {len(factors)} factor(s) noted"
+    
+    elif level == ConfidenceLevel.MEDIUM:
+        factor_summary = "; ".join(factors.values())[:100]
+        return f"Analysis reliable with some caveats: {factor_summary}"
+    
+    else:  # LOW
+        factor_summary = "; ".join(factors.values())[:100]
+        return f"Significant issues detected: {factor_summary}. Interpret results with caution."
 
 
 class ConfidenceScorer:
     """
-    Calculator for confidence levels.
-    
-    Analyzes multiple factors to determine overall confidence:
-    - Validation results (errors, warnings)
-    - Reconciliation results (cross-statement consistency)
-    - Plausibility results (reasonable value ranges)
-    - Data completeness (percentage of successful calculations)
+    Class-based confidence scorer with customization options.
     """
     
-    # Scoring thresholds
-    HIGH_THRESHOLD = 80.0
-    MEDIUM_THRESHOLD = 50.0
-    
-    # Penalty weights
-    VALIDATION_ERROR_PENALTY = 25.0
-    VALIDATION_WARNING_PENALTY = 5.0
-    RECONCILIATION_FAILURE_PENALTY = 15.0
-    PLAUSIBILITY_FAILURE_PENALTY = 10.0
-    
-    def __init__(self):
-        self.factors: dict[str, str] = {}
-        self.scoring = ScoringFactors()
+    def __init__(
+        self,
+        error_penalty: float = 20.0,
+        warning_penalty: float = 5.0,
+        implausible_penalty: float = 10.0,
+        reconciliation_penalty: float = 15.0,
+        high_threshold: float = 80.0,
+        medium_threshold: float = 50.0,
+    ):
+        """
+        Initialize with custom scoring parameters.
+        
+        Args:
+            error_penalty: Points deducted per validation error
+            warning_penalty: Points deducted per validation warning
+            implausible_penalty: Points deducted per implausible metric
+            reconciliation_penalty: Points deducted per reconciliation failure
+            high_threshold: Minimum score for HIGH confidence
+            medium_threshold: Minimum score for MEDIUM confidence
+        """
+        self.error_penalty = error_penalty
+        self.warning_penalty = warning_penalty
+        self.implausible_penalty = implausible_penalty
+        self.reconciliation_penalty = reconciliation_penalty
+        self.high_threshold = high_threshold
+        self.medium_threshold = medium_threshold
     
     def calculate(
         self,
@@ -80,156 +175,47 @@ class ConfidenceScorer:
         reconciliation_result: ReconciliationResult | None = None,
         data_completeness: float = 1.0,
     ) -> ConfidenceAssessment:
-        """
-        Calculate confidence level based on all factors.
+        """Calculate confidence using instance parameters."""
         
-        Args:
-            validation_result: Schema/completeness validation result
-            plausibility_result: Plausibility check result
-            reconciliation_result: Cross-statement reconciliation result
-            data_completeness: Fraction of successful calculations (0.0-1.0)
-            
-        Returns:
-            ConfidenceAssessment with level and justification
-        """
-        self.factors = {}
-        self.scoring = ScoringFactors()
+        score = 100.0
+        factors: dict[str, str] = {}
         
-        # Score validation
         if validation_result:
-            self._score_validation(validation_result)
+            score -= validation_result.error_count * self.error_penalty
+            score -= validation_result.warning_count * self.warning_penalty
+            if validation_result.error_count:
+                factors["errors"] = f"{validation_result.error_count} error(s)"
+            if validation_result.warning_count:
+                factors["warnings"] = f"{validation_result.warning_count} warning(s)"
         
-        # Score reconciliation
-        if reconciliation_result:
-            self._score_reconciliation(reconciliation_result)
-        
-        # Score plausibility
         if plausibility_result:
-            self._score_plausibility(plausibility_result)
+            score -= plausibility_result.implausible_count * self.implausible_penalty
+            if plausibility_result.implausible_count:
+                factors["implausible"] = f"{plausibility_result.implausible_count} metric(s)"
         
-        # Score completeness
-        self._score_completeness(data_completeness)
+        if reconciliation_result:
+            score -= reconciliation_result.failed_count * self.reconciliation_penalty
+            if reconciliation_result.failed_count:
+                factors["reconciliation"] = f"{reconciliation_result.failed_count} failure(s)"
         
-        # Determine level
-        total_score = self.scoring.total_score
-        level = self._determine_level(total_score)
-        justification = self._generate_justification(level, total_score)
+        if data_completeness < 1.0:
+            score -= (1.0 - data_completeness) * 30
+            factors["completeness"] = f"{data_completeness:.0%}"
+        
+        score = max(0.0, min(100.0, score))
+        
+        if score >= self.high_threshold:
+            level = ConfidenceLevel.HIGH
+        elif score >= self.medium_threshold:
+            level = ConfidenceLevel.MEDIUM
+        else:
+            level = ConfidenceLevel.LOW
+        
+        justification = _generate_justification(level, factors, score)
         
         return ConfidenceAssessment(
             level=level,
             justification=justification,
-            factors=self.factors.copy(),
-            score=total_score,
+            factors=factors,
+            score=score,
         )
-    
-    def _score_validation(self, result: ValidationResult) -> None:
-        """Score based on validation results."""
-        score = 100.0
-        
-        # Penalize errors heavily
-        if result.error_count > 0:
-            penalty = result.error_count * self.VALIDATION_ERROR_PENALTY
-            score -= penalty
-            self.factors["validation_errors"] = f"{result.error_count} error(s) found"
-        
-        # Penalize warnings lightly
-        if result.warning_count > 0:
-            penalty = result.warning_count * self.VALIDATION_WARNING_PENALTY
-            score -= penalty
-            self.factors["validation_warnings"] = f"{result.warning_count} warning(s) found"
-        
-        self.scoring.validation_score = max(0.0, score)
-    
-    def _score_reconciliation(self, result: ReconciliationResult) -> None:
-        """Score based on reconciliation results."""
-        score = 100.0
-        
-        if result.failed_count > 0:
-            penalty = result.failed_count * self.RECONCILIATION_FAILURE_PENALTY
-            score -= penalty
-            failed_names = [c.check_name for c in result.failed_checks]
-            self.factors["reconciliation_failures"] = f"Failed: {', '.join(failed_names)}"
-        
-        self.scoring.reconciliation_score = max(0.0, score)
-    
-    def _score_plausibility(self, result: PlausibilityResult) -> None:
-        """Score based on plausibility results."""
-        score = 100.0
-        
-        if result.implausible_count > 0:
-            penalty = result.implausible_count * self.PLAUSIBILITY_FAILURE_PENALTY
-            score -= penalty
-            implausible_names = [c.metric_name for c in result.implausible_checks]
-            self.factors["implausible_metrics"] = f"Unusual: {', '.join(implausible_names)}"
-        
-        self.scoring.plausibility_score = max(0.0, score)
-    
-    def _score_completeness(self, completeness: float) -> None:
-        """Score based on data completeness."""
-        score = completeness * 100.0
-        
-        if completeness < 1.0:
-            self.factors["data_completeness"] = f"{completeness:.0%} of metrics calculated"
-        
-        self.scoring.completeness_score = score
-    
-    def _determine_level(self, score: float) -> ConfidenceLevel:
-        """Determine confidence level from score."""
-        if score >= self.HIGH_THRESHOLD:
-            return ConfidenceLevel.HIGH
-        elif score >= self.MEDIUM_THRESHOLD:
-            return ConfidenceLevel.MEDIUM
-        return ConfidenceLevel.LOW
-    
-    def _generate_justification(self, level: ConfidenceLevel, score: float) -> str:
-        """Generate human-readable justification."""
-        if level == ConfidenceLevel.HIGH:
-            base = "Data validation passed with minimal issues"
-            if not self.factors:
-                return base + ", all reconciliations successful, values within expected ranges"
-        elif level == ConfidenceLevel.MEDIUM:
-            base = "Analysis completed with some concerns"
-        else:
-            base = "Significant data quality issues detected"
-        
-        # Add specific concerns
-        concerns = []
-        if "validation_errors" in self.factors:
-            concerns.append(self.factors["validation_errors"])
-        if "reconciliation_failures" in self.factors:
-            concerns.append(self.factors["reconciliation_failures"])
-        if "implausible_metrics" in self.factors:
-            concerns.append(self.factors["implausible_metrics"])
-        if "data_completeness" in self.factors:
-            concerns.append(self.factors["data_completeness"])
-        
-        if concerns:
-            return f"{base}: {'; '.join(concerns)}"
-        return base
-
-
-def calculate_confidence_level(
-    validation_result: ValidationResult | None = None,
-    plausibility_result: PlausibilityResult | None = None,
-    reconciliation_result: ReconciliationResult | None = None,
-    data_completeness: float = 1.0,
-) -> ConfidenceAssessment:
-    """
-    Convenience function to calculate confidence level.
-    
-    Args:
-        validation_result: Schema/completeness validation result
-        plausibility_result: Plausibility check result
-        reconciliation_result: Cross-statement reconciliation result
-        data_completeness: Fraction of successful calculations (0.0-1.0)
-        
-    Returns:
-        ConfidenceAssessment with level and justification
-    """
-    scorer = ConfidenceScorer()
-    return scorer.calculate(
-        validation_result=validation_result,
-        plausibility_result=plausibility_result,
-        reconciliation_result=reconciliation_result,
-        data_completeness=data_completeness,
-    )

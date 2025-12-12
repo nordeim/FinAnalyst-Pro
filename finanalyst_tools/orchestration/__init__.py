@@ -2,33 +2,26 @@
 """
 Orchestration layer for FinAnalyst-Pro Agent Tools.
 
-This package provides the mandatory 5-phase processing pipeline:
-1. VALIDATE - Data validation and completeness checks
-2. ANALYZE - Determine what to calculate
-3. CALCULATE - Execute calculations with audit trails
-4. INTERPRET - Add context and insights
-5. VERIFY - Pre-delivery checks
-
-Also provides:
-- Confidence scoring
-- Report generation in mandatory format
+This package provides:
+- Analysis pipeline with 5-phase workflow
+- Confidence scoring for analysis results
+- Report generation with mandatory template
 """
 
 from finanalyst_tools.orchestration.pipeline import (
     AnalysisPipeline,
     AnalysisRequest,
     AnalysisPhase,
-    run_analysis,
 )
 
 from finanalyst_tools.orchestration.confidence_scorer import (
-    ConfidenceScorer,
     calculate_confidence_level,
+    ConfidenceScorer,
 )
 
 from finanalyst_tools.orchestration.report_generator import (
-    ReportGenerator,
     generate_financial_report,
+    ReportGenerator,
     ReportFormat,
 )
 
@@ -38,12 +31,11 @@ __all__ = [
     "AnalysisPipeline",
     "AnalysisRequest",
     "AnalysisPhase",
-    "run_analysis",
     # Confidence
-    "ConfidenceScorer",
     "calculate_confidence_level",
+    "ConfidenceScorer",
     # Reporting
-    "ReportGenerator",
     "generate_financial_report",
+    "ReportGenerator",
     "ReportFormat",
 ]
