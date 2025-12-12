@@ -142,7 +142,7 @@ def create_calculation_result(
     value: Decimal | None,
     formula: str,
     inputs: dict[str, Any],
-    calculation_steps: list[str],
+    steps: list[str],
     category: MetricCategory | None = None,
     warnings: list[str] | None = None,
     unit: MetricUnit | None = None,
