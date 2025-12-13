@@ -364,6 +364,10 @@ class ComprehensiveAnalysisResult:
     validation_summary: dict[str, Any] = field(default_factory=dict)
     reconciliation_summary: dict[str, Any] = field(default_factory=dict)
     recommendations: list[str] = field(default_factory=list)
+    pipeline_errors: list[str] = field(default_factory=list)
+    pipeline_warnings: list[str] = field(default_factory=list)
+    is_partial: bool = False
+    uncalculable_metrics: list[str] = field(default_factory=list)
     
     @property
     def total_metrics(self) -> int:
@@ -419,6 +423,10 @@ class ComprehensiveAnalysisResult:
             "validation_summary": self.validation_summary,
             "reconciliation_summary": self.reconciliation_summary,
             "recommendations": self.recommendations,
+            "pipeline_errors": self.pipeline_errors,
+            "pipeline_warnings": self.pipeline_warnings,
+            "is_partial": self.is_partial,
+            "uncalculable_metrics": self.uncalculable_metrics,
             "warnings": self.all_warnings,
         }
     

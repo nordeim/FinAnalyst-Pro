@@ -166,11 +166,22 @@ class ReportGenerator:
         
         # Quick stats
         lines.append(f"\n**Metrics Calculated**: {result.total_metrics}")
-        
+
+        if result.is_partial:
+            lines.append("**Result Status**: ⚠️ Partial")
+            if result.uncalculable_metrics:
+                lines.append(f"**Uncalculable Metrics**: {len(result.uncalculable_metrics)}")
+
         # Count warnings
         warning_count = len(result.all_warnings)
         if warning_count > 0:
             lines.append(f"**Warnings**: {warning_count}")
+
+        if result.pipeline_warnings:
+            lines.append(f"**Pipeline Warnings**: {len(result.pipeline_warnings)}")
+
+        if result.pipeline_errors:
+            lines.append(f"**Pipeline Errors**: {len(result.pipeline_errors)}")
         
         return "\n".join(lines)
     

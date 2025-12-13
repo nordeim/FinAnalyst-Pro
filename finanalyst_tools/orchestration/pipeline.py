@@ -340,6 +340,12 @@ class AnalysisPipeline:
             metric_collections=self.state.metric_collections,
             confidence=confidence,
         )
+
+        uncalculable_metrics = [m.metric_name for m in self.state.all_metrics if m.value is None]
+        result.is_partial = len(uncalculable_metrics) > 0
+        result.uncalculable_metrics = uncalculable_metrics
+        result.pipeline_errors = list(self.state.errors)
+        result.pipeline_warnings = list(self.state.warnings)
         
         # Add validation summary
         if self.state.validation_result:
@@ -365,15 +371,20 @@ class AnalysisPipeline:
             period=str(request.statement_set.period),
             currency=request.currency,
         )
-        
-        if self.state.validation_result:
-            result.validation_summary = self.state.validation_result.to_dict()
-        
-        result.recommendations = [
-            f"Analysis could not be completed: {error_message}",
-            "Please address validation errors and retry",
-        ]
-        
+
+        if self.state is not None:
+            result.pipeline_errors = list(self.state.errors)
+            result.pipeline_warnings = list(self.state.warnings)
+
+            if self.state.validation_result:
+                result.validation_summary = self.state.validation_result.to_dict()
+
+            if self.state.reconciliation_result:
+                result.reconciliation_summary = self.state.reconciliation_result.to_dict()
+
+        if error_message:
+            result.pipeline_errors.append(error_message)
+
         return result
     
     def _generate_recommendations(self) -> list[str]:
