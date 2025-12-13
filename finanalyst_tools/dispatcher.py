@@ -15,9 +15,16 @@ from dataclasses import dataclass, field
 from decimal import Decimal, InvalidOperation
 from typing import Any
 import json
+import math
 import time
 
-from finanalyst_tools.tool_registry import TOOL_REGISTRY, ToolDefinition, ToolParameter
+from finanalyst_tools.tool_registry import (
+    TOOL_REGISTRY,
+    ToolDefinition,
+    ToolParameter,
+    _normalize_nested_numbers,
+    _reject_json_constant,
+)
 from finanalyst_tools.exceptions import (
     ToolNotFoundError,
     ToolExecutionError,
@@ -191,6 +198,14 @@ class ToolDispatcher:
             if param.name in parameters:
                 value = parameters[param.name]
                 coerced = self._coerce_parameter(tool.name, param, value)
+                if param.enum is not None and coerced not in param.enum:
+                    raise ToolParameterError(
+                        tool_name=tool.name,
+                        parameter_name=param.name,
+                        message=f"Value must be one of: {', '.join(param.enum)}",
+                        expected_type=param.type,
+                        actual_value=value,
+                    )
                 result[param.name] = coerced
             elif param.default is not None:
                 result[param.name] = param.default
@@ -231,11 +246,18 @@ class ToolDispatcher:
             if param.type == "number":
                 # Convert to Decimal for financial precision
                 if isinstance(value, Decimal):
+                    if not value.is_finite():
+                        raise ValueError("Non-finite Decimal is not allowed")
                     return value
                 if isinstance(value, (int, float)):
+                    if isinstance(value, float) and not math.isfinite(value):
+                        raise ValueError("Non-finite float is not allowed")
                     return Decimal(str(value))
                 if isinstance(value, str):
-                    return Decimal(value)
+                    dec = Decimal(value)
+                    if not dec.is_finite():
+                        raise ValueError("Non-finite Decimal is not allowed")
+                    return dec
                 raise ValueError(f"Cannot convert {type(value).__name__} to number")
                 
             elif param.type == "integer":
@@ -253,17 +275,25 @@ class ToolDispatcher:
                 
             elif param.type == "object":
                 if isinstance(value, dict):
-                    return value
+                    coerced = value
                 if isinstance(value, str):
-                    return json.loads(value)
+                    coerced = json.loads(value, parse_float=Decimal, parse_constant=_reject_json_constant)
                 raise ValueError("Expected object/dictionary")
+
+                if not isinstance(coerced, dict):
+                    raise ValueError("Expected object/dictionary")
+                return _normalize_nested_numbers(coerced)
                 
             elif param.type == "array":
                 if isinstance(value, list):
-                    return value
+                    coerced = value
                 if isinstance(value, str):
-                    return json.loads(value)
+                    coerced = json.loads(value, parse_float=Decimal, parse_constant=_reject_json_constant)
                 raise ValueError("Expected array/list")
+
+                if not isinstance(coerced, list):
+                    raise ValueError("Expected array/list")
+                return _normalize_nested_numbers(coerced)
                 
             else:
                 # Unknown type - pass through

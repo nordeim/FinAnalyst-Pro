@@ -16,13 +16,44 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable, cast
 import json
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+import math
 
 from finanalyst_tools.models.analysis_results import CalculationResult
 from finanalyst_tools.models.validation import ValidationResult, ValidationIssue, ValidationSeverity
 from finanalyst_tools.exceptions import ToolExecutionError, ToolParameterError
 from finanalyst_tools.config import METRIC_FORMULAS
 from finanalyst_tools.validation.utils import convert_exception_to_validation_result
+
+
+def _reject_json_constant(value: str) -> None:
+    raise ValueError(f"Invalid numeric constant: {value}")
+
+
+def _normalize_nested_numbers(value: Any) -> Any:
+    if value is None:
+        return None
+
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("Non-finite Decimal is not allowed")
+        return value
+
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("Non-finite float is not allowed")
+        return Decimal(str(value))
+
+    if isinstance(value, dict):
+        return {k: _normalize_nested_numbers(v) for k, v in value.items()}
+
+    if isinstance(value, list):
+        return [_normalize_nested_numbers(v) for v in value]
+
+    if isinstance(value, tuple):
+        return tuple(_normalize_nested_numbers(v) for v in value)
+
+    return value
 
 
 class ToolCategory(str, Enum):
@@ -163,6 +194,110 @@ class ToolDefinition:
             "example": self.example,
         }
 
+    def _validate_and_coerce_parameters(self, parameters: dict[str, Any]) -> dict[str, Any]:
+        result: dict[str, Any] = {}
+
+        for param in self.parameters:
+            if param.required and param.name not in parameters:
+                raise ToolParameterError(
+                    tool_name=self.name,
+                    parameter_name=param.name,
+                    message="Required parameter is missing",
+                    expected_type=param.type,
+                )
+
+        for param in self.parameters:
+            if param.name in parameters:
+                result[param.name] = self._coerce_parameter(param, parameters[param.name])
+            elif param.default is not None:
+                result[param.name] = param.default
+
+        return result
+
+    def _coerce_parameter(self, param: ToolParameter, value: Any) -> Any:
+        if value is None:
+            if param.required:
+                raise ToolParameterError(
+                    tool_name=self.name,
+                    parameter_name=param.name,
+                    message="Value cannot be None",
+                    expected_type=param.type,
+                )
+            return param.default
+
+        try:
+            if param.type == "number":
+                if isinstance(value, Decimal):
+                    coerced = value
+                elif isinstance(value, float):
+                    if not math.isfinite(value):
+                        raise ValueError("Non-finite float is not allowed")
+                    coerced = Decimal(str(value))
+                elif isinstance(value, int):
+                    coerced = Decimal(value)
+                elif isinstance(value, str):
+                    coerced = Decimal(value)
+                else:
+                    raise ValueError(f"Cannot convert {type(value).__name__} to number")
+
+                if not coerced.is_finite():
+                    raise ValueError("Non-finite Decimal is not allowed")
+
+            elif param.type == "integer":
+                coerced = int(value)
+
+            elif param.type == "boolean":
+                if isinstance(value, bool):
+                    coerced = value
+                elif isinstance(value, str):
+                    coerced = value.lower() in ("true", "1", "yes")
+                else:
+                    coerced = bool(value)
+
+            elif param.type == "string":
+                coerced = str(value)
+
+            elif param.type == "object":
+                if isinstance(value, dict):
+                    coerced = value
+                elif isinstance(value, str):
+                    coerced = json.loads(value, parse_float=Decimal, parse_constant=_reject_json_constant)
+                else:
+                    raise ValueError("Expected object/dictionary")
+
+                if not isinstance(coerced, dict):
+                    raise ValueError("Expected object/dictionary")
+                coerced = _normalize_nested_numbers(coerced)
+
+            elif param.type == "array":
+                if isinstance(value, list):
+                    coerced = value
+                elif isinstance(value, str):
+                    coerced = json.loads(value, parse_float=Decimal, parse_constant=_reject_json_constant)
+                else:
+                    raise ValueError("Expected array/list")
+
+                if not isinstance(coerced, list):
+                    raise ValueError("Expected array/list")
+                coerced = _normalize_nested_numbers(coerced)
+
+            else:
+                coerced = value
+
+            if param.enum is not None and coerced not in param.enum:
+                raise ValueError(f"Value must be one of: {', '.join(param.enum)}")
+
+            return coerced
+
+        except (ValueError, InvalidOperation, json.JSONDecodeError) as e:
+            raise ToolParameterError(
+                tool_name=self.name,
+                parameter_name=param.name,
+                message=f"Cannot convert to {param.type}: {str(e)}",
+                expected_type=param.type,
+                actual_value=value,
+            )
+
     def execute(self, **kwargs: Any) -> str:
         """
         Execute the tool function with proper error handling and return formatting.
@@ -183,9 +318,11 @@ class ToolDefinition:
                     original_error=ValueError("Tool function not defined"),
                     parameters=kwargs
                 )
+
+            validated_kwargs = self._validate_and_coerce_parameters(kwargs)
             
             # Execute the function
-            result = self.function(**kwargs)
+            result = self.function(**validated_kwargs)
             
             # Handle different return types
             if isinstance(result, CalculationResult):

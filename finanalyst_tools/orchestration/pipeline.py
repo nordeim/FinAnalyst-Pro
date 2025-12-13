@@ -45,6 +45,7 @@ from finanalyst_tools.validation.plausibility import check_all_plausibility
 from finanalyst_tools.calculations.profitability import calculate_all_profitability_metrics
 from finanalyst_tools.calculations.liquidity import calculate_all_liquidity_metrics
 from finanalyst_tools.orchestration.confidence_scorer import calculate_confidence_level
+from finanalyst_tools.exceptions import FinAnalystError
 
 
 class AnalysisPhase(str, Enum):
@@ -102,6 +103,18 @@ class AnalysisPipeline:
     def __init__(self):
         """Initialize the pipeline."""
         self.state: PipelineState | None = None
+
+    def _require_phase(self, phase: AnalysisPhase) -> None:
+        if self.state is None:
+            raise FinAnalystError("Pipeline has not been initialized")
+
+        if not self.state.phase_completed.get(phase, False):
+            raise FinAnalystError(f"Phase '{phase.value}' is required before continuing")
+
+    def _set_phase_completed(self, phase: AnalysisPhase) -> None:
+        if self.state is None:
+            raise FinAnalystError("Pipeline has not been initialized")
+        self.state.phase_completed[phase] = True
     
     def execute(self, request: AnalysisRequest) -> ComprehensiveAnalysisResult:
         """
@@ -116,25 +129,30 @@ class AnalysisPipeline:
         # Initialize state
         self.state = PipelineState()
         
-        # Phase 1: VALIDATE
-        self._phase_validate(request)
-        if not self.state.validation_result.can_proceed:
-            return self._create_error_result(request, "Validation failed")
-        
-        # Phase 2: ANALYZE
-        analysis_plan = self._phase_analyze(request)
-        
-        # Phase 3: CALCULATE
-        self._phase_calculate(request, analysis_plan)
-        
-        # Phase 4: INTERPRET
-        self._phase_interpret(request)
-        
-        # Phase 5: VERIFY
-        self._phase_verify(request)
-        
-        # Create final result
-        return self._create_result(request)
+        try:
+            # Phase 1: VALIDATE
+            self._phase_validate(request)
+            if not self.state.validation_result or not self.state.validation_result.can_proceed:
+                return self._create_error_result(request, "Validation failed")
+
+            # Phase 2: ANALYZE
+            analysis_plan = self._phase_analyze(request)
+
+            # Phase 3: CALCULATE
+            self._phase_calculate(request, analysis_plan)
+
+            # Phase 4: INTERPRET
+            self._phase_interpret(request)
+
+            # Phase 5: VERIFY
+            self._phase_verify(request)
+
+            # Create final result
+            return self._create_result(request)
+        except Exception as e:
+            if self.state is not None:
+                self.state.errors.append(f"Pipeline error in phase '{self.state.current_phase.value}': {str(e)}")
+            return self._create_error_result(request, f"Pipeline execution failed: {str(e)}")
     
     def _phase_validate(self, request: AnalysisRequest) -> None:
         """
@@ -155,6 +173,7 @@ class AnalysisPipeline:
         
         if not validation.can_proceed:
             self.state.errors.append("Schema validation failed")
+            self._set_phase_completed(AnalysisPhase.VALIDATE)
             return
         
         # Reconciliation (if cash flow available)
@@ -171,8 +190,8 @@ class AnalysisPipeline:
         if not reconciliation.all_passed:
             for check in reconciliation.failed_checks:
                 self.state.warnings.append(f"Reconciliation: {check.message}")
-        
-        self.state.phase_completed[AnalysisPhase.VALIDATE] = True
+
+        self._set_phase_completed(AnalysisPhase.VALIDATE)
     
     def _phase_analyze(self, request: AnalysisRequest) -> dict[str, bool]:
         """
@@ -185,6 +204,10 @@ class AnalysisPipeline:
         Returns:
             Dictionary of metric categories to calculate
         """
+        self._require_phase(AnalysisPhase.VALIDATE)
+        if not self.state.validation_result or not self.state.validation_result.can_proceed:
+            raise FinAnalystError("Cannot analyze because validation did not pass")
+
         self.state.current_phase = AnalysisPhase.ANALYZE
         
         analysis_plan = {
@@ -208,7 +231,7 @@ class AnalysisPipeline:
         if analysis_type in ("efficiency", "comprehensive"):
             analysis_plan["efficiency"] = True
         
-        self.state.phase_completed[AnalysisPhase.ANALYZE] = True
+        self._set_phase_completed(AnalysisPhase.ANALYZE)
         return analysis_plan
     
     def _phase_calculate(
@@ -221,6 +244,7 @@ class AnalysisPipeline:
         
         Execute all planned calculations.
         """
+        self._require_phase(AnalysisPhase.ANALYZE)
         self.state.current_phase = AnalysisPhase.CALCULATE
         
         prior_bs = None
@@ -247,7 +271,7 @@ class AnalysisPipeline:
         
         # Note: Solvency and Efficiency calculations would be added in Phase 2
         
-        self.state.phase_completed[AnalysisPhase.CALCULATE] = True
+        self._set_phase_completed(AnalysisPhase.CALCULATE)
     
     def _phase_interpret(self, request: AnalysisRequest) -> None:
         """
@@ -255,6 +279,7 @@ class AnalysisPipeline:
         
         Add context and insights to calculated metrics.
         """
+        self._require_phase(AnalysisPhase.CALCULATE)
         self.state.current_phase = AnalysisPhase.INTERPRET
         
         # Plausibility checks on all metrics
@@ -265,7 +290,7 @@ class AnalysisPipeline:
         for check in plausibility.implausible_checks:
             self.state.warnings.append(f"Plausibility: {check.message}")
         
-        self.state.phase_completed[AnalysisPhase.INTERPRET] = True
+        self._set_phase_completed(AnalysisPhase.INTERPRET)
     
     def _phase_verify(self, request: AnalysisRequest) -> None:
         """
@@ -276,6 +301,7 @@ class AnalysisPipeline:
         - Verify no critical errors
         - Final quality check
         """
+        self._require_phase(AnalysisPhase.INTERPRET)
         self.state.current_phase = AnalysisPhase.VERIFY
         
         # Check that calculations were performed
@@ -288,7 +314,7 @@ class AnalysisPipeline:
             for m in uncalculable:
                 self.state.warnings.append(f"Could not calculate: {m.metric_name}")
         
-        self.state.phase_completed[AnalysisPhase.VERIFY] = True
+        self._set_phase_completed(AnalysisPhase.VERIFY)
     
     def _create_result(self, request: AnalysisRequest) -> ComprehensiveAnalysisResult:
         """Create the final analysis result."""
