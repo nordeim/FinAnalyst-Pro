@@ -23,7 +23,7 @@ from finanalyst_tools.models.analysis_results import CalculationResult
 from finanalyst_tools.models.validation import ValidationResult, ValidationIssue, ValidationSeverity
 from finanalyst_tools.exceptions import ToolExecutionError, ToolParameterError
 from finanalyst_tools.config import METRIC_FORMULAS
-from finanalyst_tools.validation.utils import convert_exception_to_validation_result
+from finanalyst_tools.validation.utils import exception_to_validation_result
 
 
 def _reject_json_constant(value: str) -> None:
@@ -344,7 +344,7 @@ class ToolDefinition:
                 
         except Exception as e:
             # Convert any exception to a proper validation result
-            validation_result = convert_exception_to_validation_result(
+            validation_result = exception_to_validation_result(
                 e,
                 field=self.name,
                 context=f"tool execution: {self.name}"
@@ -650,221 +650,225 @@ class ToolRegistry:
                 include_audit_trail=include_audit_trail,
             )
 
-    # ─────────────────────────────────────────────────────────────────
-    # VALIDATION TOOLS
-    # ─────────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
+        # VALIDATION TOOLS
+        # ─────────────────────────────────────────────────────────────────
         
-    self.register(ToolDefinition(
-        name="analyze_financials",
-        description="Run the full 5-phase analysis pipeline and return a formatted report",
-        category=ToolCategory.ANALYSIS,
-        parameters=[
-            ToolParameter("statement_set", "object", "FinancialStatementSet payload (income_statement, balance_sheet, optional cash_flow_statement)"),
-            ToolParameter("prior_statement_set", "object", "Prior-period FinancialStatementSet (optional)", required=False),
-            ToolParameter(
-                "analysis_type",
-                "string",
-                "Type of analysis to run",
-                enum=["profitability", "liquidity", "solvency", "efficiency", "comprehensive"],
-                required=False,
-                default="comprehensive",
-            ),
-            ToolParameter("include_trends", "boolean", "Whether to include trend analysis", required=False, default=False),
-            ToolParameter("currency", "string", "Reporting currency", required=False, default="SGD"),
-            ToolParameter("report_format", "string", "Report format: markdown or json", required=False, enum=["markdown", "json"], default="markdown"),
-            ToolParameter("include_audit_trail", "boolean", "Whether to include the calculation audit trail", required=False, default=True),
-        ],
-        returns="Formatted report string",
-        function=analyze_financials,
-        example='{"statement_set": {"income_statement": {"period": {"year": 2023}, "total_revenue": 1000000, "cost_of_goods_sold": 600000}, "balance_sheet": {"period": {"year": 2023}, "cash_and_equivalents": 100000}}, "analysis_type": "profitability"}',
-        expose_to_llm=True,
-    ))
+        self.register(ToolDefinition(
+            name="analyze_financials",
+            description="Run the full 5-phase analysis pipeline and return a formatted report",
+            category=ToolCategory.ANALYSIS,
+            parameters=[
+                ToolParameter("statement_set", "object", "FinancialStatementSet payload (income_statement, balance_sheet, optional cash_flow_statement)"),
+                ToolParameter("prior_statement_set", "object", "Prior-period FinancialStatementSet (optional)", required=False),
+                ToolParameter(
+                    "analysis_type",
+                    "string",
+                    "Type of analysis to run",
+                    enum=["profitability", "liquidity", "solvency", "efficiency", "comprehensive"],
+                    required=False,
+                    default="comprehensive",
+                ),
+                ToolParameter("include_trends", "boolean", "Whether to include trend analysis", required=False, default=False),
+                ToolParameter("currency", "string", "Reporting currency", required=False, default="SGD"),
+                ToolParameter("report_format", "string", "Report format: markdown or json", required=False, enum=["markdown", "json"], default="markdown"),
+                ToolParameter("include_audit_trail", "boolean", "Whether to include the calculation audit trail", required=False, default=True),
+            ],
+            returns="Formatted report string",
+            function=analyze_financials,
+            example='{"statement_set": {"income_statement": {"period": {"year": 2023}, "total_revenue": 1000000, "cost_of_goods_sold": 600000}, "balance_sheet": {"period": {"year": 2023}, "cash_and_equivalents": 100000}}, "analysis_type": "profitability"}',
+            expose_to_llm=True,
+        ))
         
-    self.register(ToolDefinition(
-        name="validate_financial_data",
-        description="Validate that financial data is complete and properly formatted for analysis",
-        category=ToolCategory.VALIDATION,
-        parameters=[
-            ToolParameter("income_statement", "object", "Income statement data", required=False),
-            ToolParameter("balance_sheet", "object", "Balance sheet data", required=False),
-            ToolParameter("cash_flow", "object", "Cash flow statement data", required=False),
-            ToolParameter("analysis_type", "string", "Type of analysis to validate for",
-                        enum=["profitability", "liquidity", "solvency", "efficiency", "comprehensive"],
-                        required=True),
-        ],
-        returns="ValidationResult with any issues found",
-        function=validate_financial_data_completeness,
-        example='validate_financial_data(income_statement={"total_revenue": 1000000}, analysis_type="profitability")',
-        expose_to_llm=True,
-    ))
+        self.register(ToolDefinition(
+            name="validate_financial_data",
+            description="Validate that financial data is complete and properly formatted for analysis",
+            category=ToolCategory.VALIDATION,
+            parameters=[
+                ToolParameter("income_statement", "object", "Income statement data", required=False),
+                ToolParameter("balance_sheet", "object", "Balance sheet data", required=False),
+                ToolParameter("cash_flow", "object", "Cash flow statement data", required=False),
+                ToolParameter(
+                    "analysis_type",
+                    "string",
+                    "Type of analysis to validate for",
+                    enum=["profitability", "liquidity", "solvency", "efficiency", "comprehensive"],
+                    required=True,
+                ),
+            ],
+            returns="ValidationResult with any issues found",
+            function=validate_financial_data_completeness,
+            example='validate_financial_data(income_statement={"total_revenue": 1000000}, analysis_type="profitability")',
+            expose_to_llm=True,
+        ))
         
-    # ─────────────────────────────────────────────────────────────────
-    # PROFITABILITY TOOLS
-    # ─────────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
+        # PROFITABILITY TOOLS
+        # ─────────────────────────────────────────────────────────────────
         
-    self.register(ToolDefinition(
-        name="calculate_gross_profit_margin",
-        description="Calculate Gross Profit Margin: (Revenue - COGS) / Revenue × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("revenue", "number", "Total revenue / net sales"),
-            ToolParameter("cost_of_goods_sold", "number", "Cost of goods sold / cost of sales"),
-        ],
-        returns="CalculationResult with gross profit margin percentage and calculation steps",
-        example='{"revenue": 1000000, "cost_of_goods_sold": 600000}',
-        function=calculate_gross_profit_margin,
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_gross_profit_margin",
+            description="Calculate Gross Profit Margin: (Revenue - COGS) / Revenue × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("revenue", "number", "Total revenue / net sales"),
+                ToolParameter("cost_of_goods_sold", "number", "Cost of goods sold / cost of sales"),
+            ],
+            returns="CalculationResult with gross profit margin percentage and calculation steps",
+            example='{"revenue": 1000000, "cost_of_goods_sold": 600000}',
+            function=calculate_gross_profit_margin,
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_operating_profit_margin",
-        description="Calculate Operating Profit Margin: (Revenue - COGS - OpEx) / Revenue × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("revenue", "number", "Total revenue"),
-            ToolParameter("cost_of_goods_sold", "number", "Cost of goods sold"),
-            ToolParameter("operating_expenses", "number", "Operating expenses"),
-            ToolParameter("marketing_expenses", "number", "Marketing expenses if tracked separately", required=False),
-        ],
-        returns="CalculationResult with operating profit margin percentage and calculation steps",
-        function=calculate_operating_profit_margin,
-        example='{"revenue": 1000000, "cost_of_goods_sold": 600000, "operating_expenses": 200000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_operating_profit_margin",
+            description="Calculate Operating Profit Margin: (Revenue - COGS - OpEx) / Revenue × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("revenue", "number", "Total revenue"),
+                ToolParameter("cost_of_goods_sold", "number", "Cost of goods sold"),
+                ToolParameter("operating_expenses", "number", "Operating expenses"),
+                ToolParameter("marketing_expenses", "number", "Marketing expenses if tracked separately", required=False),
+            ],
+            returns="CalculationResult with operating profit margin percentage and calculation steps",
+            function=calculate_operating_profit_margin,
+            example='{"revenue": 1000000, "cost_of_goods_sold": 600000, "operating_expenses": 200000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_net_profit_margin",
-        description="Calculate Net Profit Margin: Net Income / Revenue × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("revenue", "number", "Total revenue"),
-            ToolParameter("net_income", "number", "Net income (profit after tax)"),
-        ],
-        returns="CalculationResult with net profit margin percentage and calculation steps",
-        function=calculate_net_profit_margin,
-        example='{"revenue": 1000000, "net_income": 100000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_net_profit_margin",
+            description="Calculate Net Profit Margin: Net Income / Revenue × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("revenue", "number", "Total revenue"),
+                ToolParameter("net_income", "number", "Net income (profit after tax)"),
+            ],
+            returns="CalculationResult with net profit margin percentage and calculation steps",
+            function=calculate_net_profit_margin,
+            example='{"revenue": 1000000, "net_income": 100000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_ebitda_margin",
-        description="Calculate EBITDA Margin: EBITDA / Revenue × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("revenue", "number", "Total revenue"),
-            ToolParameter("ebitda", "number", "Earnings Before Interest, Taxes, Depreciation, and Amortization"),
-        ],
-        returns="CalculationResult with EBITDA margin percentage and calculation steps",
-        function=calculate_ebitda_margin,
-        example='{"revenue": 1000000, "ebitda": 250000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_ebitda_margin",
+            description="Calculate EBITDA Margin: EBITDA / Revenue × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("revenue", "number", "Total revenue"),
+                ToolParameter("ebitda", "number", "Earnings Before Interest, Taxes, Depreciation, and Amortization"),
+            ],
+            returns="CalculationResult with EBITDA margin percentage and calculation steps",
+            function=calculate_ebitda_margin,
+            example='{"revenue": 1000000, "ebitda": 250000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_return_on_assets",
-        description="Calculate ROA: Net Income / Average Total Assets × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("net_income", "number", "Net income for the period"),
-            ToolParameter("total_assets_beginning", "number", "Total assets at period start"),
-            ToolParameter("total_assets_ending", "number", "Total assets at period end"),
-        ],
-        returns="CalculationResult with return on assets percentage and calculation steps",
-        function=calculate_return_on_assets,
-        example='{"net_income": 100000, "total_assets_beginning": 500000, "total_assets_ending": 550000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_return_on_assets",
+            description="Calculate ROA: Net Income / Average Total Assets × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("net_income", "number", "Net income for the period"),
+                ToolParameter("total_assets_beginning", "number", "Total assets at period start"),
+                ToolParameter("total_assets_ending", "number", "Total assets at period end"),
+            ],
+            returns="CalculationResult with return on assets percentage and calculation steps",
+            function=calculate_return_on_assets,
+            example='{"net_income": 100000, "total_assets_beginning": 500000, "total_assets_ending": 550000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_return_on_equity",
-        description="Calculate ROE: Net Income / Average Shareholders' Equity × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("net_income", "number", "Net income for the period"),
-            ToolParameter("shareholders_equity_beginning", "number", "Equity at period start"),
-            ToolParameter("shareholders_equity_ending", "number", "Equity at period end"),
-        ],
-        returns="CalculationResult with return on equity percentage and calculation steps",
-        function=calculate_return_on_equity,
-        example='{"net_income": 100000, "shareholders_equity_beginning": 300000, "shareholders_equity_ending": 350000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_return_on_equity",
+            description="Calculate ROE: Net Income / Average Shareholders' Equity × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("net_income", "number", "Net income for the period"),
+                ToolParameter("shareholders_equity_beginning", "number", "Equity at period start"),
+                ToolParameter("shareholders_equity_ending", "number", "Equity at period end"),
+            ],
+            returns="CalculationResult with return on equity percentage and calculation steps",
+            function=calculate_return_on_equity,
+            example='{"net_income": 100000, "shareholders_equity_beginning": 300000, "shareholders_equity_ending": 350000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_return_on_capital_employed",
-        description="Calculate ROCE: EBIT / Capital Employed × 100",
-        category=ToolCategory.PROFITABILITY,
-        parameters=[
-            ToolParameter("ebit", "number", "Earnings Before Interest and Taxes"),
-            ToolParameter("total_assets", "number", "Total assets"),
-            ToolParameter("current_liabilities", "number", "Current liabilities"),
-        ],
-        returns="CalculationResult with ROCE percentage and calculation steps",
-        function=calculate_return_on_capital_employed,
-        example='{"ebit": 200000, "total_assets": 800000, "current_liabilities": 250000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_return_on_capital_employed",
+            description="Calculate ROCE: EBIT / Capital Employed × 100",
+            category=ToolCategory.PROFITABILITY,
+            parameters=[
+                ToolParameter("ebit", "number", "Earnings Before Interest and Taxes"),
+                ToolParameter("total_assets", "number", "Total assets"),
+                ToolParameter("current_liabilities", "number", "Current liabilities"),
+            ],
+            returns="CalculationResult with ROCE percentage and calculation steps",
+            function=calculate_return_on_capital_employed,
+            example='{"ebit": 200000, "total_assets": 800000, "current_liabilities": 250000}',
+            expose_to_llm=False,
+        ))
         
-    # ─────────────────────────────────────────────────────────────────
-    # LIQUIDITY TOOLS
-    # ─────────────────────────────────────────────────────────────────
+        # ─────────────────────────────────────────────────────────────────
+        # LIQUIDITY TOOLS
+        # ─────────────────────────────────────────────────────────────────
         
-    self.register(ToolDefinition(
-        name="calculate_current_ratio",
-        description="Calculate Current Ratio: Current Assets / Current Liabilities",
-        category=ToolCategory.LIQUIDITY,
-        parameters=[
-            ToolParameter("current_assets", "number", "Total current assets"),
-            ToolParameter("current_liabilities", "number", "Total current liabilities"),
-        ],
-        returns="CalculationResult with current ratio and calculation steps",
-        example='{"current_assets": 500000, "current_liabilities": 300000}',
-        function=calculate_current_ratio,
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_current_ratio",
+            description="Calculate Current Ratio: Current Assets / Current Liabilities",
+            category=ToolCategory.LIQUIDITY,
+            parameters=[
+                ToolParameter("current_assets", "number", "Total current assets"),
+                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+            ],
+            returns="CalculationResult with current ratio and calculation steps",
+            example='{"current_assets": 500000, "current_liabilities": 300000}',
+            function=calculate_current_ratio,
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_quick_ratio",
-        description="Calculate Quick Ratio (Acid Test): (Current Assets - Inventory) / Current Liabilities",
-        category=ToolCategory.LIQUIDITY,
-        parameters=[
-            ToolParameter("current_assets", "number", "Total current assets"),
-            ToolParameter("inventory", "number", "Inventory value"),
-            ToolParameter("current_liabilities", "number", "Total current liabilities"),
-        ],
-        returns="CalculationResult with quick ratio and calculation steps",
-        function=calculate_quick_ratio,
-        example='{"current_assets": 500000, "inventory": 150000, "current_liabilities": 300000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_quick_ratio",
+            description="Calculate Quick Ratio (Acid Test): (Current Assets - Inventory) / Current Liabilities",
+            category=ToolCategory.LIQUIDITY,
+            parameters=[
+                ToolParameter("current_assets", "number", "Total current assets"),
+                ToolParameter("inventory", "number", "Inventory value"),
+                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+            ],
+            returns="CalculationResult with quick ratio and calculation steps",
+            function=calculate_quick_ratio,
+            example='{"current_assets": 500000, "inventory": 150000, "current_liabilities": 300000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_cash_ratio",
-        description="Calculate Cash Ratio: Cash and Equivalents / Current Liabilities",
-        category=ToolCategory.LIQUIDITY,
-        parameters=[
-            ToolParameter("cash_and_equivalents", "number", "Cash and cash equivalents"),
-            ToolParameter("current_liabilities", "number", "Total current liabilities"),
-        ],
-        returns="CalculationResult with cash ratio and calculation steps",
-        function=calculate_cash_ratio,
-        example='{"cash_and_equivalents": 100000, "current_liabilities": 300000}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_cash_ratio",
+            description="Calculate Cash Ratio: Cash and Equivalents / Current Liabilities",
+            category=ToolCategory.LIQUIDITY,
+            parameters=[
+                ToolParameter("cash_and_equivalents", "number", "Cash and cash equivalents"),
+                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+            ],
+            returns="CalculationResult with cash ratio and calculation steps",
+            function=calculate_cash_ratio,
+            example='{"cash_and_equivalents": 100000, "current_liabilities": 300000}',
+            expose_to_llm=False,
+        ))
         
-    self.register(ToolDefinition(
-        name="calculate_working_capital",
-        description="Calculate Working Capital: Current Assets - Current Liabilities",
-        category=ToolCategory.LIQUIDITY,
-        parameters=[
-            ToolParameter("current_assets", "number", "Total current assets"),
-            ToolParameter("current_liabilities", "number", "Total current liabilities"),
-        ],
-        returns="CalculationResult with working capital amount and calculation steps",
-        function=calculate_working_capital,
-        example='{"current_assets": 500000, "current_liabilities": 300000, "currency": "SGD"}',
-        expose_to_llm=False,
-    ))
+        self.register(ToolDefinition(
+            name="calculate_working_capital",
+            description="Calculate Working Capital: Current Assets - Current Liabilities",
+            category=ToolCategory.LIQUIDITY,
+            parameters=[
+                ToolParameter("current_assets", "number", "Total current assets"),
+                ToolParameter("current_liabilities", "number", "Total current liabilities"),
+            ],
+            returns="CalculationResult with working capital amount and calculation steps",
+            function=calculate_working_capital,
+            example='{"current_assets": 500000, "current_liabilities": 300000, "currency": "SGD"}',
+            expose_to_llm=False,
+        ))
 
 
 # Global singleton instance

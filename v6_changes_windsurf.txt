@@ -37,6 +37,15 @@
 
 ---
 
+        modified:   finanalyst_tools/__pycache__/tool_registry.cpython-312.pyc
+        modified:   finanalyst_tools/calculations/__pycache__/base.cpython-312.pyc
+        modified:   finanalyst_tools/calculations/base.py
+        modified:   finanalyst_tools/orchestration/__pycache__/report_generator.cpython-312.pyc
+        modified:   finanalyst_tools/orchestration/report_generator.py
+        modified:   finanalyst_tools/tool_registry.py
+
+---
+
 $ cat v6_changes_windsurf.txt | sort | uniq | grep -v '\.pyc$'
 
         modified:   finanalyst_tools/calculations/base.py

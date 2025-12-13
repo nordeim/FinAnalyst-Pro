@@ -308,6 +308,42 @@ def extract_value(
     return to_decimal(value, default=default)
 
 
+def extract_decimal_value(
+    value: Any,
+    field_name: str = "value",
+    default: Decimal | None = None,
+) -> Decimal:
+    if value is None:
+        return default if default is not None else Decimal("0")
+
+    if isinstance(value, Decimal):
+        return value
+
+    if isinstance(value, bool):
+        raise InvalidInputError(
+            f"Invalid boolean for {field_name}",
+            field_name=field_name,
+            actual_value=value,
+            expected="numeric",
+        )
+
+    if isinstance(value, int):
+        return Decimal(value)
+
+    if isinstance(value, float):
+        return Decimal(str(value))
+
+    if isinstance(value, str):
+        return Decimal(value)
+
+    raise InvalidInputError(
+        f"Cannot convert {type(value).__name__} to Decimal for {field_name}",
+        field_name=field_name,
+        actual_value=value,
+        expected="numeric",
+    )
+
+
 def validate_calculation_inputs(inputs: dict[str, Any]) -> tuple[bool, list[str]]:
     """
     Validate calculation inputs for common issues.
