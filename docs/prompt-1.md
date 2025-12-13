@@ -22,6 +22,10 @@ Awesome job on your meticulous analysis, planning and execution! Please keep up 
 
 ---
 
+Now, please meticulously review and validate the codebase files under the @finanalyst_tools folder and its subfolder to have a deep understanding of the design and architecture of the current state of the codebase. Then meticulously review and validate my codebase assessment findings in @v5_codebase_assessment_for_review_and_validation.md  against your own deep understanding. Please rigorously cross-reference your doubts against the actual codebase files instead of assuming anython. 
+
+---
+
 Awesome job on meticulous review, analysis and planning! Please keep up the good work in your rigorous and meticulous approach to planning and execution! Now, please meticulously review and analyze my implementation plan for the agent toolset, then compare mine implementation with your plan.
 
 ---
