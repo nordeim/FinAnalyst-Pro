@@ -84,6 +84,7 @@ class ValidationResult:
     issues: list[ValidationIssue] = field(default_factory=list)
     warnings: list[ValidationIssue] = field(default_factory=list)
     info: list[ValidationIssue] = field(default_factory=list)
+    context: dict[str, Any] = field(default_factory=dict)
     
     @property
     def error_count(self) -> int:
@@ -188,6 +189,7 @@ class ValidationResult:
         self.issues.extend(other.issues)
         self.warnings.extend(other.warnings)
         self.info.extend(other.info)
+        self.context.update(other.context)
         if not other.is_valid:
             self.is_valid = False
         return self
@@ -203,6 +205,7 @@ class ValidationResult:
             "errors": [issue.to_dict() for issue in self.issues],
             "warnings": [issue.to_dict() for issue in self.warnings],
             "info": [issue.to_dict() for issue in self.info],
+            "context": self.context,
         }
     
     def to_json(self) -> str:

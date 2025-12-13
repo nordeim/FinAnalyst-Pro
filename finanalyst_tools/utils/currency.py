@@ -15,6 +15,7 @@ from decimal import Decimal
 from typing import Final
 
 from finanalyst_tools.config import (
+    SingaporeConstants,
     SUPPORTED_CURRENCIES,
     CURRENCY_SYMBOLS,
     ZERO_DECIMAL_CURRENCIES,
@@ -27,13 +28,13 @@ from finanalyst_tools.utils.math_ops import to_decimal, round_decimal
 # SINGAPORE CONSTANTS
 # ============================================================================
 
-SGD_GST_RATE: Final[Decimal] = Decimal("0.09")  # 9% as of 2024
+SGD_GST_RATE: Final[Decimal] = SingaporeConstants.GST_RATE
 
 # SFRS for Small Entities thresholds (qualify if meet 2 of 3)
 SFRS_THRESHOLDS: Final[dict[str, int]] = {
-    "revenue": 10_000_000,      # S$10M
-    "total_assets": 10_000_000, # S$10M
-    "employees": 50,
+    "revenue": SingaporeConstants.SFRS_SMALL_ENTITY_REVENUE,
+    "total_assets": SingaporeConstants.SFRS_SMALL_ENTITY_ASSETS,
+    "employees": SingaporeConstants.SFRS_SMALL_ENTITY_EMPLOYEES,
 }
 
 

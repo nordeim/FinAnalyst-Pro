@@ -15,7 +15,7 @@ All constants use Final for immutability and are fully typed.
 
 from __future__ import annotations
 
-from decimal import ROUND_HALF_UP, ROUND_HALF_EVEN
+from decimal import ROUND_HALF_UP, ROUND_HALF_EVEN, Decimal
 from enum import Enum
 from typing import Final, Any
 
@@ -272,7 +272,7 @@ ZERO_DECIMAL_CURRENCIES: Final[frozenset[str]] = frozenset({"JPY", "IDR", "KRW",
 class SingaporeConstants:
     """Singapore-specific financial constants and thresholds."""
     
-    GST_RATE: Final[float] = 0.09  # 9% as of 2024
+    GST_RATE: Final[Decimal] = Decimal("0.09")  # 9% as of 2024
     
     # SFRS for Small Entities thresholds
     SFRS_SMALL_ENTITY_REVENUE: Final[int] = 10_000_000    # S$10M
@@ -287,14 +287,16 @@ class SingaporeConstants:
     COMMON_FYE_MONTHS: Final[list[int]] = [12, 3, 6]
     
     @classmethod
-    def calculate_gst_exclusive(cls, gst_inclusive: float) -> float:
+    def calculate_gst_exclusive(cls, gst_inclusive: Decimal | float | int | str) -> Decimal:
         """Convert GST-inclusive amount to GST-exclusive."""
-        return gst_inclusive / (1 + cls.GST_RATE)
+        amount = gst_inclusive if isinstance(gst_inclusive, Decimal) else Decimal(str(gst_inclusive))
+        return amount / (Decimal("1") + cls.GST_RATE)
     
     @classmethod
-    def calculate_gst_amount(cls, gst_exclusive: float) -> float:
+    def calculate_gst_amount(cls, gst_exclusive: Decimal | float | int | str) -> Decimal:
         """Calculate GST on a GST-exclusive amount."""
-        return gst_exclusive * cls.GST_RATE
+        amount = gst_exclusive if isinstance(gst_exclusive, Decimal) else Decimal(str(gst_exclusive))
+        return amount * cls.GST_RATE
 
 
 # ============================================================================
