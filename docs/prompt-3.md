@@ -20,3 +20,7 @@ Awesome job on meticulous analysis, planning and execution! Please keep up the g
 
 awesome meticulous job so far! please keep up the good work! yes, please meticulously proceed according to your plan.
 
+---
+
+awesome meticulous work so far! now, please meticulously review @AGENT_TOOLSET_HANDBOOK.md to check that it is indeed correct and accurate according to the actual codebase design and architecture, also check to make sure the handbook contains sufficient details to serve as an adequate guide as intended.
+

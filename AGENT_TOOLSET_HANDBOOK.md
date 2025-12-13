@@ -41,6 +41,20 @@ Tool inputs are validated and coerced at execution time.
 
 If coercion/validation fails, the registry raises a `ToolParameterError` (or returns a formatted validation block when executing via `ToolDefinition.execute`).
 
+### Currency formatting
+
+The toolkit supports dynamic currency symbol formatting. When a `CalculationResult` has `unit=CURRENCY`, the `formatted_value` property uses the result's `currency` field:
+
+| Currency Code | Symbol | Example |
+|---------------|--------|----------|
+| USD | $ | $1,000.00 |
+| SGD | S$ | S$1,000.00 |
+| EUR | € | €1,000.00 |
+| GBP | £ | £1,000.00 |
+| JPY / CNY | ¥ | ¥1,000.00 |
+
+Unknown currencies fall back to displaying the currency code as prefix.
+
 ---
 
 ## Two execution paths (choose based on integration)
@@ -135,6 +149,14 @@ All other tools are registered but `expose_to_llm=False` (internal-only by desig
 - If `report_format == "json"`, returns `result.to_json()`.
 - Otherwise returns Markdown via `generate_financial_report(..., format=ReportFormat.MARKDOWN, include_audit_trail=...)`.
 
+> **Important (v1.0.0)**: Balance sheet validation now requires these fields:
+> - `cash_and_equivalents`
+> - `total_assets`
+> - `total_liabilities`
+> - `total_shareholders_equity`
+>
+> Balance sheets missing any of these will fail validation.
+
 **Example (ToolDispatcher style)**
 
 ```json
@@ -157,7 +179,8 @@ All other tools are registered but `expose_to_llm=False` (internal-only by desig
         "total_liabilities": 450000,
         "total_shareholders_equity": 350000,
         "current_assets": 500000,
-        "current_liabilities": 300000
+        "current_liabilities": 300000,
+        "inventory": 50000
       }
     },
     "analysis_type": "comprehensive",
