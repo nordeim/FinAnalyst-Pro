@@ -74,8 +74,8 @@ def calculate_current_ratio(
     
     # Record inputs
     inputs = {
-        "current_assets": float(ca),
-        "current_liabilities": float(cl),
+        "current_assets": ca,
+        "current_liabilities": cl,
     }
     
     # Step 1: Input validation
@@ -154,9 +154,9 @@ def calculate_quick_ratio(
     
     # Record inputs
     inputs = {
-        "current_assets": float(ca),
-        "inventory": float(inv),
-        "current_liabilities": float(cl),
+        "current_assets": ca,
+        "inventory": inv,
+        "current_liabilities": cl,
     }
     
     # Step 1: Input validation
@@ -171,7 +171,7 @@ def calculate_quick_ratio(
     # Step 2: Calculate quick assets
     quick_assets = ca - inv
     steps.append(f"Step 2: Calculate Quick Assets = Current Assets - Inventory = {ca:,.2f} - {inv:,.2f} = {quick_assets:,.2f}")
-    inputs["quick_assets"] = float(quick_assets)
+    inputs["quick_assets"] = quick_assets
     
     # Step 3: Calculate ratio
     if is_effectively_zero(cl):
@@ -242,8 +242,8 @@ def calculate_cash_ratio(
     
     # Record inputs
     inputs = {
-        "cash_and_equivalents": float(cash),
-        "current_liabilities": float(cl),
+        "cash_and_equivalents": cash,
+        "current_liabilities": cl,
     }
     
     # Step 1: Input validation
@@ -318,8 +318,8 @@ def calculate_working_capital(
     
     # Record inputs
     inputs = {
-        "current_assets": float(ca),
-        "current_liabilities": float(cl),
+        "current_assets": ca,
+        "current_liabilities": cl,
         "currency": currency,
     }
     

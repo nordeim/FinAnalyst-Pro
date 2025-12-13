@@ -18,6 +18,8 @@ from typing import Annotated, Any
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from finanalyst_tools.utils.serialization import to_jsonable
+
 
 class StatementType(str, Enum):
     """Types of financial statements."""
@@ -255,13 +257,13 @@ class IncomeStatementData(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary with calculated fields included."""
         data = self.model_dump(by_alias=False)
-        data["gross_profit"] = float(self.gross_profit)
-        data["operating_income"] = float(self.operating_income)
-        data["ebitda"] = float(self.ebitda)
-        data["ebit"] = float(self.ebit)
-        data["earnings_before_tax"] = float(self.earnings_before_tax)
-        data["calculated_net_income"] = float(self.calculated_net_income)
-        return data
+        data["gross_profit"] = self.gross_profit
+        data["operating_income"] = self.operating_income
+        data["ebitda"] = self.ebitda
+        data["ebit"] = self.ebit
+        data["earnings_before_tax"] = self.earnings_before_tax
+        data["calculated_net_income"] = self.calculated_net_income
+        return to_jsonable(data)
 
 
 class BalanceSheetData(BaseModel):
@@ -459,17 +461,17 @@ class BalanceSheetData(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary with calculated fields included."""
         data = self.model_dump(by_alias=False)
-        data["calculated_current_assets"] = float(self.calculated_current_assets)
-        data["calculated_non_current_assets"] = float(self.calculated_non_current_assets)
-        data["calculated_total_assets"] = float(self.calculated_total_assets)
-        data["calculated_current_liabilities"] = float(self.calculated_current_liabilities)
-        data["calculated_non_current_liabilities"] = float(self.calculated_non_current_liabilities)
-        data["calculated_total_liabilities"] = float(self.calculated_total_liabilities)
-        data["calculated_shareholders_equity"] = float(self.calculated_shareholders_equity)
-        data["calculated_total_equity"] = float(self.calculated_total_equity)
-        data["working_capital"] = float(self.working_capital)
-        data["total_debt"] = float(self.total_debt)
-        return data
+        data["calculated_current_assets"] = self.calculated_current_assets
+        data["calculated_non_current_assets"] = self.calculated_non_current_assets
+        data["calculated_total_assets"] = self.calculated_total_assets
+        data["calculated_current_liabilities"] = self.calculated_current_liabilities
+        data["calculated_non_current_liabilities"] = self.calculated_non_current_liabilities
+        data["calculated_total_liabilities"] = self.calculated_total_liabilities
+        data["calculated_shareholders_equity"] = self.calculated_shareholders_equity
+        data["calculated_total_equity"] = self.calculated_total_equity
+        data["working_capital"] = self.working_capital
+        data["total_debt"] = self.total_debt
+        return to_jsonable(data)
 
 
 class CashFlowStatementData(BaseModel):
@@ -604,12 +606,12 @@ class CashFlowStatementData(BaseModel):
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary with calculated fields included."""
         data = self.model_dump(by_alias=False)
-        data["calculated_operating_cash_flow"] = float(self.calculated_operating_cash_flow)
-        data["calculated_investing_cash_flow"] = float(self.calculated_investing_cash_flow)
-        data["calculated_financing_cash_flow"] = float(self.calculated_financing_cash_flow)
-        data["calculated_net_change"] = float(self.calculated_net_change)
-        data["free_cash_flow"] = float(self.free_cash_flow)
-        return data
+        data["calculated_operating_cash_flow"] = self.calculated_operating_cash_flow
+        data["calculated_investing_cash_flow"] = self.calculated_investing_cash_flow
+        data["calculated_financing_cash_flow"] = self.calculated_financing_cash_flow
+        data["calculated_net_change"] = self.calculated_net_change
+        data["free_cash_flow"] = self.free_cash_flow
+        return to_jsonable(data)
 
 
 class FinancialStatementSet(BaseModel):

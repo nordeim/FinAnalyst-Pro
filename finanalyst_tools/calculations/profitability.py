@@ -75,8 +75,8 @@ def calculate_gross_profit_margin(
     
     # Record inputs
     inputs = {
-        "revenue": float(rev),
-        "cost_of_goods_sold": float(cogs),
+        "revenue": rev,
+        "cost_of_goods_sold": cogs,
     }
     
     # Step 1: Validate inputs
@@ -160,10 +160,10 @@ def calculate_operating_profit_margin(
     
     # Record inputs
     inputs = {
-        "revenue": float(rev),
-        "cost_of_goods_sold": float(cogs),
-        "operating_expenses": float(opex),
-        "marketing_expenses": float(marketing) if marketing_expenses is not None else None,
+        "revenue": rev,
+        "cost_of_goods_sold": cogs,
+        "operating_expenses": opex,
+        "marketing_expenses": marketing if marketing_expenses is not None else None,
         "include_marketing_in_opex": include_marketing_in_opex,
     }
     
@@ -258,8 +258,8 @@ def calculate_net_profit_margin(
     
     # Record inputs
     inputs = {
-        "revenue": float(rev),
-        "net_income": float(ni),
+        "revenue": rev,
+        "net_income": ni,
     }
     
     # Step 1: Input validation
@@ -330,8 +330,8 @@ def calculate_ebitda_margin(
     
     # Record inputs
     inputs = {
-        "revenue": float(rev),
-        "ebitda": float(ebitda_val),
+        "revenue": rev,
+        "ebitda": ebitda_val,
     }
     
     # Step 1: Input validation
@@ -403,9 +403,9 @@ def calculate_return_on_assets(
     
     # Record inputs
     inputs = {
-        "net_income": float(ni),
-        "total_assets_beginning": float(assets_begin),
-        "total_assets_ending": float(assets_end),
+        "net_income": ni,
+        "total_assets_beginning": assets_begin,
+        "total_assets_ending": assets_end,
     }
     
     # Step 1: Input validation
@@ -420,7 +420,7 @@ def calculate_return_on_assets(
     # Step 2: Calculate average assets
     avg_assets = calculate_average(assets_begin, assets_end)
     steps.append(f"Step 2: Calculate Average Total Assets = (Beginning + Ending) / 2 = ({assets_begin:,.2f} + {assets_end:,.2f}) / 2 = {avg_assets:,.2f}")
-    inputs["average_total_assets"] = float(avg_assets)
+    inputs["average_total_assets"] = avg_assets
     
     # Step 3: Calculate ROA
     if is_effectively_zero(avg_assets):
@@ -481,9 +481,9 @@ def calculate_return_on_equity(
     
     # Record inputs
     inputs = {
-        "net_income": float(ni),
-        "shareholders_equity_beginning": float(equity_begin),
-        "shareholders_equity_ending": float(equity_end),
+        "net_income": ni,
+        "shareholders_equity_beginning": equity_begin,
+        "shareholders_equity_ending": equity_end,
     }
     
     # Step 1: Input validation
@@ -501,7 +501,7 @@ def calculate_return_on_equity(
     # Step 2: Calculate average equity
     avg_equity = calculate_average(equity_begin, equity_end)
     steps.append(f"Step 2: Calculate Average Shareholders' Equity = (Beginning + Ending) / 2 = ({equity_begin:,.2f} + {equity_end:,.2f}) / 2 = {avg_equity:,.2f}")
-    inputs["average_shareholders_equity"] = float(avg_equity)
+    inputs["average_shareholders_equity"] = avg_equity
     
     # Step 3: Calculate ROE
     if is_effectively_zero(avg_equity):
@@ -569,9 +569,9 @@ def calculate_return_on_capital_employed(
     
     # Record inputs
     inputs = {
-        "ebit": float(ebit_val),
-        "total_assets": float(assets),
-        "current_liabilities": float(cl),
+        "ebit": ebit_val,
+        "total_assets": assets,
+        "current_liabilities": cl,
     }
     
     # Step 1: Input validation
@@ -588,7 +588,7 @@ def calculate_return_on_capital_employed(
     # Step 2: Calculate capital employed
     capital_employed = assets - cl
     steps.append(f"Step 2: Calculate Capital Employed = Total Assets - Current Liabilities = {assets:,.2f} - {cl:,.2f} = {capital_employed:,.2f}")
-    inputs["capital_employed"] = float(capital_employed)
+    inputs["capital_employed"] = capital_employed
     
     # Step 3: Calculate ROCE
     if is_effectively_zero(capital_employed):

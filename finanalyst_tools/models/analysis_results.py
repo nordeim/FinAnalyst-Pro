@@ -19,6 +19,7 @@ from typing import Any
 import json
 
 from finanalyst_tools.models.financial_statements import FinancialPeriod
+from finanalyst_tools.utils.serialization import to_jsonable
 
 
 class MetricUnit(str, Enum):
@@ -114,19 +115,19 @@ class CalculationResult:
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        return to_jsonable({
             "metric_name": self.metric_name,
-            "value": float(self.value) if self.value is not None else None,
+            "value": self.value,
             "formatted_value": self.formatted_value,
             "unit": self.unit.value,
             "formula": self.formula,
-            "inputs": {k: float(v) if isinstance(v, Decimal) else v for k, v in self.inputs.items()},
+            "inputs": self.inputs,
             "calculation_steps": self.calculation_steps,
             "is_plausible": self.is_plausible,
             "plausibility_range": self.plausibility_range,
             "warnings": self.warnings,
             "category": self.category.value if self.category else None,
-        }
+        })
     
     def to_json(self) -> str:
         """Convert to JSON string."""
@@ -302,15 +303,15 @@ class TrendAnalysisResult:
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        return to_jsonable({
             "metric_name": self.metric_name,
             "periods": self.periods,
-            "values": [float(v) if v is not None else None for v in self.values],
+            "values": self.values,
             "direction": self.direction.value,
-            "growth_rate": float(self.growth_rate) if self.growth_rate else None,
-            "volatility": float(self.volatility) if self.volatility else None,
+            "growth_rate": self.growth_rate,
+            "volatility": self.volatility,
             "interpretation": self.interpretation,
-        }
+        })
     
     def to_json(self) -> str:
         """Convert to JSON string."""

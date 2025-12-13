@@ -187,13 +187,8 @@ def create_calculation_result(
     if unit is None:
         unit = get_metric_unit(metric_name)
     
-    # Convert inputs to serializable format (Decimal to float)
-    serializable_inputs = {}
-    for key, val in inputs.items():
-        if isinstance(val, Decimal):
-            serializable_inputs[key] = float(val)
-        else:
-            serializable_inputs[key] = val
+    # Preserve inputs as-is (Decimal-safe). JSON serialization is handled at output boundaries.
+    serializable_inputs = dict(inputs)
     
     # Build result with all required properties
     result = CalculationResult(

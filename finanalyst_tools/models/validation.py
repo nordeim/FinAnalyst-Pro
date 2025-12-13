@@ -17,6 +17,8 @@ from enum import Enum
 from typing import Any
 import json
 
+from finanalyst_tools.utils.serialization import to_jsonable
+
 
 class ValidationSeverity(str, Enum):
     """Severity levels for validation issues."""
@@ -280,17 +282,17 @@ class ReconciliationCheck:
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        return to_jsonable({
             "check_name": self.check_name,
             "statement_a": self.statement_a,
-            "value_a": float(self.value_a),
+            "value_a": self.value_a,
             "statement_b": self.statement_b,
-            "value_b": float(self.value_b),
-            "difference": float(self.difference),
+            "value_b": self.value_b,
+            "difference": self.difference,
             "tolerance": self.tolerance,
             "passed": self.passed,
             "message": self.message,
-        }
+        })
     
     def __str__(self) -> str:
         status = "✅" if self.passed else "❌"
@@ -402,15 +404,15 @@ class PlausibilityCheck:
     
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        return to_jsonable({
             "metric_name": self.metric_name,
-            "value": float(self.value),
+            "value": self.value,
             "plausible_range": self.plausible_range,
             "is_plausible": self.is_plausible,
             "assessment": self.assessment,
             "severity": self.severity.value,
             "message": self.message,
-        }
+        })
     
     def __str__(self) -> str:
         status = "✅" if self.is_plausible else "⚠️"
@@ -470,7 +472,7 @@ class PlausibilityResult:
                 result.add_warning(
                     field=check.metric_name,
                     message=check.message,
-                    actual_value=float(check.value),
+                    actual_value=check.value,
                     expected=f"Between {check.plausible_range[0]} and {check.plausible_range[1]}",
                     suggestion="Verify input data accuracy",
                 )
