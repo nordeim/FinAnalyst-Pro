@@ -51,7 +51,7 @@ If coercion/validation fails, the registry raises a `ToolParameterError` (or ret
 
 - **Returns a string**:
   - `CalculationResult` → converted to a Markdown-style reasoning block (`CalculationResult.to_reasoning_block()`).
-  - `ValidationResult` → converted to a validation summary block (`_validation_result_to_reasoning_block`).
+  - `ValidationResult` → converted to a validation summary block (via `result_to_reasoning_block` from `validation.utils`).
   - `dict` → pretty JSON string.
   - `str` → returned as-is.
 

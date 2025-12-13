@@ -81,11 +81,11 @@ python -m venv .venv
 
 ### 2) Install dependencies
 
-This repo does not currently ship a `requirements.txt` or `pyproject.toml`. The toolset imports `pydantic`.
+This repo ships a `requirements.txt` with the required dependencies.
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install pydantic
+python -m pip install -r requirements.txt
 ```
 
 ### 3) Run a minimal end-to-end analysis
@@ -270,6 +270,7 @@ print(result.success)
 
 ```text
 finanalyst_tools/
+  __init__.py         # Package entry point with public API exports
   calculations/
     base.py
     profitability.py
