@@ -149,10 +149,16 @@ class AnalysisPipeline:
 
             # Create final result
             return self._create_result(request)
-        except Exception as e:
+        except (FinAnalystError, ValueError, TypeError) as e:
+            # Handle expected errors gracefully
             if self.state is not None:
                 self.state.errors.append(f"Pipeline error in phase '{self.state.current_phase.value}': {str(e)}")
             return self._create_error_result(request, f"Pipeline execution failed: {str(e)}")
+        except Exception as e:
+            # Log unexpected errors but don't silently swallow them
+            if self.state is not None:
+                self.state.errors.append(f"Unexpected error in phase '{self.state.current_phase.value}': {type(e).__name__}: {str(e)}")
+            return self._create_error_result(request, f"Unexpected pipeline error: {type(e).__name__}: {str(e)}")
     
     def _phase_validate(self, request: AnalysisRequest) -> None:
         """

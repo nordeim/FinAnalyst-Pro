@@ -80,6 +80,7 @@ class CalculationResult:
     plausibility_range: tuple[float, float] | None = None
     warnings: list[str] = field(default_factory=list)
     category: MetricCategory | None = None
+    currency: str = "USD"  # Currency code for CURRENCY unit type
     
     def add_step(self, step: str) -> None:
         """Add a calculation step to the audit trail."""
@@ -106,7 +107,10 @@ class CalculationResult:
         elif self.unit == MetricUnit.RATIO:
             return f"{float(self.value):.4f}"
         elif self.unit == MetricUnit.CURRENCY:
-            return f"${float(self.value):,.2f}"
+            # Use currency-specific symbol, fallback to code
+            symbols = {"USD": "$", "SGD": "S$", "EUR": "€", "GBP": "£", "JPY": "¥", "CNY": "¥"}
+            symbol = symbols.get(self.currency, f"{self.currency} ")
+            return f"{symbol}{float(self.value):,.2f}"
         elif self.unit == MetricUnit.DAYS:
             return f"{int(self.value)} days"
         elif self.unit == MetricUnit.TIMES:
@@ -185,7 +189,7 @@ class MetricCollection:
     Groups metrics by category with summary statistics.
     """
     category: MetricCategory
-    period: FinancialPeriod | str
+    period: FinancialPeriod  # Normalized to FinancialPeriod only
     metrics: list[CalculationResult] = field(default_factory=list)
     
     def add_metric(self, metric: CalculationResult) -> None:

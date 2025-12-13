@@ -218,8 +218,13 @@ def validate_balance_sheet_schema(
     else:
         data_dict = data
     
-    # Required fields for basic balance sheet
-    required = ["cash_and_equivalents"]
+    # Required fields for basic balance sheet - strengthened validation
+    required = [
+        "cash_and_equivalents",
+        "total_assets",
+        "total_liabilities",
+        "total_shareholders_equity",
+    ]
     
     for field in required:
         value, found_name = find_field_value(data_dict, field)

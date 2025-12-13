@@ -45,6 +45,19 @@
         modified:   finanalyst_tools/tool_registry.py
 
 ---
+# v7 review changes:
+
+$ git status | grep 'finanalyst_tools\/' | grep -v '\.pyc'
+        new file:   finanalyst_tools/__init__.py
+        modified:   finanalyst_tools/calculations/base.py
+        modified:   finanalyst_tools/models/analysis_results.py
+        modified:   finanalyst_tools/orchestration/pipeline.py
+        modified:   finanalyst_tools/orchestration/report_generator.py
+        modified:   finanalyst_tools/tool_registry.py
+        modified:   finanalyst_tools/validation/plausibility.py
+        modified:   finanalyst_tools/validation/schema_validator.py
+
+---
 
 $ cat v6_changes_windsurf.txt | sort | uniq | grep -v '\.pyc$'
 

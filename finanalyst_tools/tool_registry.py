@@ -23,7 +23,7 @@ from finanalyst_tools.models.analysis_results import CalculationResult
 from finanalyst_tools.models.validation import ValidationResult, ValidationIssue, ValidationSeverity
 from finanalyst_tools.exceptions import ToolExecutionError, ToolParameterError
 from finanalyst_tools.config import METRIC_FORMULAS
-from finanalyst_tools.validation.utils import exception_to_validation_result
+from finanalyst_tools.validation.utils import exception_to_validation_result, result_to_reasoning_block
 
 
 def _reject_json_constant(value: str) -> None:
@@ -331,7 +331,7 @@ class ToolDefinition:
                 return result.to_reasoning_block()
             elif isinstance(result, ValidationResult):
                 # Handle validation results
-                return _validation_result_to_reasoning_block(result)
+                return result_to_reasoning_block(result)
             elif isinstance(result, dict):
                 # Handle dictionary results (convert to JSON)
                 return json.dumps(result, indent=2)
@@ -349,65 +349,7 @@ class ToolDefinition:
                 field=self.name,
                 context=f"tool execution: {self.name}"
             )
-            return _validation_result_to_reasoning_block(validation_result)
-
-
-def _validation_result_to_reasoning_block(result: ValidationResult) -> str:
-    """
-    Convert a ValidationResult to a formatted reasoning block.
-    
-    Args:
-        result: Validation result to format
-        
-    Returns:
-        Formatted markdown block
-    """
-    lines = [
-        f"### Validation Result for {result.context.get('analysis_type', 'analysis')}",
-        "",
-        "**Summary**:",
-        f"- Status: {'✅ Valid' if result.is_valid else '❌ Invalid'}",
-        f"- Errors: {result.error_count}",
-        f"- Warnings: {result.warning_count}",
-        f"- Info: {result.info_count}",
-        "",
-    ]
-    
-    if not result.is_valid:
-        lines.append("**Errors**:")
-        for issue in result.issues:
-            error_icon = "❌ " if issue.severity == ValidationSeverity.ERROR else "⚠️ "
-            lines.append(f"  - {error_icon}{issue.field}: {issue.message}")
-            if issue.actual_value is not None:
-                lines.append(f"    Actual: {issue.actual_value}, Expected: {issue.expected or 'valid value'}")
-            if issue.suggestion:
-                lines.append(f"    Suggestion: {issue.suggestion}")
-        lines.append("")
-    
-    if result.warning_count > 0:
-        lines.append("**Warnings**:")
-        for issue in result.warnings:
-            lines.append(f"  - ⚠️ {issue.field}: {issue.message}")
-            if issue.suggestion:
-                lines.append(f"    Suggestion: {issue.suggestion}")
-        lines.append("")
-    
-    if result.info_count > 0:
-        lines.append("**Information**:")
-        for issue in result.info:
-            lines.append(f"  - ℹ️ {issue.field}: {issue.message}")
-        lines.append("")
-    
-    lines.append("**Recommendation**:")
-    if result.can_proceed:
-        lines.append("✅ Analysis can proceed with the provided data.")
-        if result.warning_count > 0:
-            lines.append("⚠️ However, please review the warnings for potential data quality issues.")
-    else:
-        lines.append("❌ Analysis cannot proceed due to validation errors.")
-        lines.append("Please correct the errors before continuing.")
-    
-    return "\n".join(lines)
+            return result_to_reasoning_block(validation_result)
 
 
 class ToolRegistry:

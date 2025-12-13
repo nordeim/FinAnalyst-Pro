@@ -257,3 +257,37 @@ The **Comprehensive Codebase Review & Analysis** document is **substantively acc
 - ⚠️ **Line numbers frequently differ** (suggests document is based on earlier codebase version)
 
 The review's architectural assessment, grades, and recommendations are well-founded and align with actual codebase analysis.
+
+---
+
+# Task: Fix Codebase Issues from Review
+
+## Current Phase: COMPLETE ✅
+
+## Progress
+
+### [x] Phase 1: Planning
+- [x] Create comprehensive implementation plan
+- [x] Review and validate plan
+- [x] Get user approval
+
+### [x] Phase 2: Foundation Fixes
+- [x] Create top-level `__init__.py`
+- [x] Fix timezone-naive datetime in report_generator.py
+- [x] Normalize `MetricCollection.period` type
+
+### [x] Phase 3: Critical Logic Fixes
+- [x] Remove duplicate `to_reasoning_block` dynamic assignment
+- [x] Fix overly broad exception catching in pipeline.py
+- [x] Fix plausibility checker mutation issue
+
+### [x] Phase 4: Code Quality Improvements
+- [x] Strengthen balance sheet schema validation
+- [x] Consolidate reasoning block formatters
+- [x] Fix currency symbol in formatted_value
+
+### [x] Phase 5: Verification
+- [x] Run Python syntax validation on all modified files
+- [x] Verify imports work correctly
+- [x] Create verification report
+

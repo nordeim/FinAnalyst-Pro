@@ -97,12 +97,18 @@ def check_plausibility(
 
 def check_all_plausibility(
     metrics: list[CalculationResult],
+    mutate_metrics: bool = True,
 ) -> PlausibilityResult:
     """
     Check plausibility for a list of calculation results.
     
+    Note: By default, this function MUTATES the input metrics by setting
+    `is_plausible=False` and adding warnings for implausible values.
+    Set `mutate_metrics=False` to disable this behavior.
+    
     Args:
         metrics: List of calculation results to check
+        mutate_metrics: If True (default), update metric.is_plausible and add warnings
         
     Returns:
         PlausibilityResult with all check results
@@ -117,8 +123,8 @@ def check_all_plausibility(
         )
         result.add_check(check)
         
-        # Update the metric's plausibility status
-        if not check.is_plausible:
+        # Update the metric's plausibility status (if mutation is enabled)
+        if mutate_metrics and not check.is_plausible:
             metric.is_plausible = False
             metric.add_warning(check.message)
     
@@ -169,15 +175,21 @@ class PlausibilityChecker:
     def check_all(
         self,
         metrics: list[CalculationResult],
+        mutate_metrics: bool = True,
     ) -> PlausibilityResult:
-        """Check multiple metrics."""
+        """Check multiple metrics.
+        
+        Args:
+            metrics: List of calculation results to check
+            mutate_metrics: If True (default), update metric.is_plausible and add warnings
+        """
         result = PlausibilityResult()
         
         for metric in metrics:
             check = self.check(metric.metric_name, metric.value)
             result.add_check(check)
             
-            if not check.is_plausible:
+            if mutate_metrics and not check.is_plausible:
                 metric.is_plausible = False
                 metric.add_warning(check.message)
         

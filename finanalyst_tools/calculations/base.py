@@ -146,6 +146,7 @@ def create_calculation_result(
     category: MetricCategory | None = None,
     warnings: list[str] | None = None,
     unit: MetricUnit | None = None,
+    currency: str = "USD",
 ) -> CalculationResult:
     """
     Factory function to create a CalculationResult with full compatibility.
@@ -162,6 +163,7 @@ def create_calculation_result(
         category: Metric category
         warnings: List of warning messages
         unit: Override metric unit if needed
+        currency: Currency code for CURRENCY unit type (default: USD)
         
     Returns:
         Complete CalculationResult with plausibility assessment
@@ -202,10 +204,8 @@ def create_calculation_result(
         plausibility_range=plausibility_range,
         warnings=warning_list,
         category=category,
+        currency=currency,
     )
-    
-    # Add the to_reasoning_block method dynamically
-    result.to_reasoning_block = lambda: _format_reasoning_block(result)  # type: ignore
     
     return result
 
