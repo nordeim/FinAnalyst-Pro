@@ -8,3 +8,7 @@ Remember to create complete validated working replacement file for all the files
 
 Awesome understanding! please meticulously review and analyze the two attached sample `README.md` for GitHub repos, then create a prompt to get ChatGPT or any LLM to generate similarly structured `README.md` based on given repo codebase. So analyze the structure, layout, format, style, design and other nuances of the attached sample files, then come up with a structured guide as a LLM prompt template.
 
+---
+
+Awesome understanding! Now, please meticulously review and analyze the codebase files attached below. Due to the length, I will share the codebase files in this and the next two prompts. Wait for me to tell you that all the codebase files have been uploaded before you begin your consolidated review and analysis.
+
