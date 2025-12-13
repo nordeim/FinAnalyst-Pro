@@ -1,16 +1,18 @@
-# FinAnalyst-Pro Agent Tools
+<div align="center">
 
-[![Python](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
-[![Pydantic](https://img.shields.io/badge/pydantic-v2-0A66C2.svg)](https://docs.pydantic.dev/)
-[![Precision](https://img.shields.io/badge/precision-Decimal-critical.svg)](#decimal-safety--precision)
-[![Agent](https://img.shields.io/badge/agent_system_prompt-v3.0-black.svg)](./AGENT_SYSTEM_PROMPT.md)
+# 🎯 FinAnalyst-Pro Agent Tools
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Pydantic v2](https://img.shields.io/badge/pydantic-v2-0A66C2.svg?style=for-the-badge)](https://docs.pydantic.dev/)
+[![Decimal Safe](https://img.shields.io/badge/precision-Decimal-critical.svg?style=for-the-badge)](#decimal-safety--precision)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-green?style=for-the-badge)](./finanalyst_tools/__init__.py)
 
-A **validation-first, Decimal-safe** financial analysis toolset designed to power an LLM-driven “financial analyst” agent.
+**Validation-first, Decimal-safe financial analysis toolset for LLM-driven agents**
 
-This repo contains:
-- `finanalyst_tools/`: a Python toolset implementing a **5-phase analysis pipeline** (Validate → Analyze → Calculate → Interpret → Verify), with strict numeric handling and audit trails.
-- `AGENT_SYSTEM_PROMPT.md`: the agent system prompt contract (grounding, security, workflow, and output template).
+[Features](#-key-features) • [Quick Start](#-quick-start) • [Architecture](#-pipeline-and-architecture) • [Contributing](#-contributing)
+
+</div>
 
 ---
 
@@ -196,7 +198,21 @@ Each statement includes a `period`:
 
 Notes:
 - Many numeric fields accept `int`, `float`, `str`, or `Decimal`. Tool boundaries normalize numerics to `Decimal`.
-- Field aliases are supported in several places (see validation’s `FIELD_ALIASES`).
+- Field aliases are supported in several places (see validation's `FIELD_ALIASES`).
+
+### Currency Formatting
+
+Results with `unit=CURRENCY` display dynamic currency symbols:
+
+| Code | Symbol | Example |
+|------|--------|---------|
+| USD | $ | $1,000.00 |
+| SGD | S$ | S$1,000.00 |
+| EUR | € | €1,000.00 |
+| GBP | £ | £1,000.00 |
+| JPY/CNY | ¥ | ¥1,000.00 |
+
+Unknown currency codes fall back to displaying the code as prefix (e.g., `CHF 1,000.00`).
 
 ---
 
@@ -302,21 +318,98 @@ AGENT_SYSTEM_PROMPT.md
 
 ---
 
-## Development
+## 🛠 Development
 
 ### Recommended checks
 
-- Compile:
-
 ```bash
+# Compile check
 python -m compileall -q finanalyst_tools
+
+# Import validation
+python -c "import finanalyst_tools; print(f'v{finanalyst_tools.__version__}')"
 ```
 
 ### Adding new tools
 
-- Register the tool in `finanalyst_tools/tool_registry.py`.
-- Decide whether it should be model-visible via `expose_to_llm`.
-- Ensure any numeric inputs are safe at boundaries (prefer `Decimal`).
+1. Register the tool in `finanalyst_tools/tool_registry.py`
+2. Set `expose_to_llm=True` if LLM should call it directly
+3. Ensure numeric inputs use `Decimal` at tool boundaries
+4. Add documentation to `AGENT_TOOLSET_HANDBOOK.md`
+
+---
+
+## 📊 Project Status
+
+<div align="center">
+
+| Component | Status | Metrics |
+|-----------|--------|---------|
+| **Core Pipeline** | ✅ Stable | 5-phase workflow |
+| **Profitability** | ✅ Complete | 7 ratios |
+| **Liquidity** | ✅ Complete | 4 ratios |
+| **Solvency** | 📅 Planned | Roadmap |
+| **Efficiency** | 📅 Planned | Roadmap |
+| **Test Suite** | ❌ Missing | Contributions welcome |
+
+</div>
+
+**Current Version**: 1.0.0
+
+---
+
+## 🗺 Roadmap
+
+### Phase 1: Core Foundation ✅ Complete
+- [x] Profitability metrics (7 ratios including margins and returns)
+- [x] Liquidity metrics (4 ratios)
+- [x] 5-phase analysis pipeline with validation gating
+- [x] Dual LLM provider support (OpenAI + Anthropic schemas)
+- [x] Multi-currency formatting (USD, SGD, EUR, GBP, JPY)
+
+### Phase 2: Expansion (Planned)
+- [ ] Solvency ratios (Debt-to-Equity, Interest Coverage)
+- [ ] Efficiency ratios (Asset Turnover, Receivables Turnover)
+- [ ] Trend analysis across periods
+- [ ] Comparative period analysis
+
+### Phase 3: Enterprise (Future)
+- [ ] Comprehensive test suite
+- [ ] API documentation (OpenAPI/Swagger)
+- [ ] Database integration for persistence
+- [ ] Async execution support
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+```bash
+git clone https://github.com/your-username/FinAnalyst-Pro.git
+cd FinAnalyst-Pro
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+python -m compileall -q finanalyst_tools
+```
+
+### Areas Needing Help
+
+| Priority | Area | Skills Needed | Good First Issue? |
+|----------|------|---------------|-------------------|
+| **High** | Test Suite | pytest, coverage | ✅ Yes |
+| **Medium** | Documentation | Technical writing | ✅ Yes |
+| **Medium** | New Ratios | Financial analysis | No |
+| **Low** | Performance | Python optimization | No |
+
+### Pull Request Guidelines
+
+1. **Keep focused**: One feature/fix per PR
+2. **Add tests**: New features need tests (when test suite exists)
+3. **Update docs**: Document changes in AGENT_TOOLSET_HANDBOOK.md
+4. **Run checks**: `python -m compileall -q finanalyst_tools`
 
 ---
 
@@ -327,7 +420,7 @@ FinAnalyst-Pro is released under the **MIT License**. See the [LICENSE](LICENSE)
 ```text
 MIT License
 
-Copyright (c) 2025 Your Name
+Copyright (c) 2025 FinAnalyst-Pro Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -348,3 +441,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+---
+
+<div align="center">
+
+**Built with precision for financial analysts who value accuracy.**
+
+[Report Bug](https://github.com/your-username/FinAnalyst-Pro/issues) · 
+[Request Feature](https://github.com/your-username/FinAnalyst-Pro/issues) · 
+[View Handbook](./AGENT_TOOLSET_HANDBOOK.md)
+
+</div>
