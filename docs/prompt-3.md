@@ -4,3 +4,7 @@ But first create a sub-plan (to-do list) with a detailed description of changes 
 
 Remember to create complete validated working replacement file for all the files that need updating/fixing. Please use Canvas for editing the relevant files. 
 
+---
+
+Awesome understanding! please meticulously review and analyze the two attached sample `README.md` for GitHub repos, then create a prompt to get ChatGPT or any LLM to generate similarly structured `README.md` based on given repo codebase. So analyze the structure, layout, format, style, design and other nuances of the attached sample files, then come up with a structured guide as a LLM prompt template.
+

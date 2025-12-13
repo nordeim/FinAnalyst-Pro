@@ -38,6 +38,10 @@ awesome meticulous job so far! please keep up the good work! yes, please meticul
 
 ---
 
+awesome meticulous job so far! please keep up the rigorou and meticulous approach! now, help me meticulously plan and then create an awesome and comprehensive README.md for the GitHub repo hosting this codebase which consists of the toolset in @finanalyst_tools and the agent system prompt @agent_system_prompt.md . use the following information as your style and layout/format guide for the README.md.
+
+---
+
 Awesome job on meticulous review, analysis and planning! Please keep up the good work in your rigorous and meticulous approach to planning and execution! Now, please meticulously review and analyze my implementation plan for the agent toolset, then compare mine implementation with your plan.
 
 ---
