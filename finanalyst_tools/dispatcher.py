@@ -276,9 +276,10 @@ class ToolDispatcher:
             elif param.type == "object":
                 if isinstance(value, dict):
                     coerced = value
-                if isinstance(value, str):
+                elif isinstance(value, str):
                     coerced = json.loads(value, parse_float=Decimal, parse_constant=_reject_json_constant)
-                raise ValueError("Expected object/dictionary")
+                else:
+                    raise ValueError("Expected object/dictionary")
 
                 if not isinstance(coerced, dict):
                     raise ValueError("Expected object/dictionary")
@@ -287,9 +288,10 @@ class ToolDispatcher:
             elif param.type == "array":
                 if isinstance(value, list):
                     coerced = value
-                if isinstance(value, str):
+                elif isinstance(value, str):
                     coerced = json.loads(value, parse_float=Decimal, parse_constant=_reject_json_constant)
-                raise ValueError("Expected array/list")
+                else:
+                    raise ValueError("Expected array/list")
 
                 if not isinstance(coerced, list):
                     raise ValueError("Expected array/list")
