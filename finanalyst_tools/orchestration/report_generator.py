@@ -194,4 +194,3 @@ class ReportGenerator:
             if is_valid and error_count == 0 and warning_count == 0:
                 lines.append("- All validation checks passed")
         else:
-            
