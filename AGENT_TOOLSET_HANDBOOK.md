@@ -1,8 +1,8 @@
 # FinAnalyst-Pro — Agent Toolset Handbook (Single Source of Truth)
 
-This handbook complements `agent_system_prompt.md`.
+This handbook complements `AGENT_SYSTEM_PROMPT.md`.
 
-- **`agent_system_prompt.md`** defines *who the agent is*, the mandatory pipeline, and the output/report contract.
+- **`AGENT_SYSTEM_PROMPT.md`** defines *who the agent is*, the mandatory pipeline, and the output/report contract.
 - **This handbook** defines *what tools exist*, *exactly how to call them*, and *what they return*, based on the code in `finanalyst_tools/`.
 
 ---
@@ -83,7 +83,7 @@ All other tools are registered but `expose_to_llm=False` (internal-only by desig
 
 ---
 
-## Canonical workflow mapping (matches `agent_system_prompt.md`)
+## Canonical workflow mapping (matches `AGENT_SYSTEM_PROMPT.md`)
 
 - **Phase 1: VALIDATE (Mandatory)**
   - Use `validate_financial_data` if you need a validation-only pass before analysis.

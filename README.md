@@ -3,13 +3,14 @@
 [![Python](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
 [![Pydantic](https://img.shields.io/badge/pydantic-v2-0A66C2.svg)](https://docs.pydantic.dev/)
 [![Precision](https://img.shields.io/badge/precision-Decimal-critical.svg)](#decimal-safety--precision)
-[![Agent](https://img.shields.io/badge/agent_system_prompt-v3.0-black.svg)](./agent_system_prompt.md)
+[![Agent](https://img.shields.io/badge/agent_system_prompt-v3.0-black.svg)](./AGENT_SYSTEM_PROMPT.md)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 A **validation-first, Decimal-safe** financial analysis toolset designed to power an LLM-driven “financial analyst” agent.
 
 This repo contains:
 - `finanalyst_tools/`: a Python toolset implementing a **5-phase analysis pipeline** (Validate → Analyze → Calculate → Interpret → Verify), with strict numeric handling and audit trails.
-- `agent_system_prompt.md`: the agent system prompt contract (grounding, security, workflow, and output template).
+- `AGENT_SYSTEM_PROMPT.md`: the agent system prompt contract (grounding, security, workflow, and output template).
 
 ---
 
@@ -24,7 +25,7 @@ This repo contains:
 - [LLM integration notes](#llm-integration-notes)
 - [Repository structure](#repository-structure)
 - [Development](#development)
-- [License](#license)
+- [License](#-license)
 
 ---
 
@@ -65,7 +66,7 @@ The toolset is intentionally split into:
   - `expose_to_llm` controls which tools are visible to the model.
 
 - **Agent prompt contract included**
-  - `agent_system_prompt.md` documents the required pipeline, output format, and security constraints.
+  - `AGENT_SYSTEM_PROMPT.md` documents the required pipeline, output format, and security constraints.
 
 ---
 
@@ -229,7 +230,7 @@ flowchart LR
 
 The agent contract lives in:
 
-- `./agent_system_prompt.md`
+- `./AGENT_SYSTEM_PROMPT.md`
 
 It specifies:
 - grounding and security rules
@@ -295,10 +296,7 @@ finanalyst_tools/
   dispatcher.py
   exceptions.py
   config.py
-agent_system_prompt.md
-scripts/
-  assemble_code_files.py
-  extract_code_files.py
+AGENT_SYSTEM_PROMPT.md
 ```
 
 ---
@@ -321,9 +319,31 @@ python -m compileall -q finanalyst_tools
 
 ---
 
-## License
+## 📄 License
 
-No `LICENSE` file was found in this repository at the time this README was generated.
+FinAnalyst-Pro is released under the **MIT License**. See the [LICENSE](LICENSE) file for details.
 
-Recommended next step:
-- Add a `LICENSE` file (MIT/Apache-2.0/etc.) and update the badges accordingly.
+```text
+MIT License
+
+Copyright (c) 2025 Your Name
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
+
