@@ -220,6 +220,7 @@ def create_calculation_result(
     category: MetricCategory | None = None,
     warnings: list[str] | None = None,
     unit: MetricUnit | None = None,
+    currency: str = "USD",
 ) -> CalculationResult:
     """
     Factory function to create a CalculationResult with full compatibility.
@@ -236,6 +237,7 @@ def create_calculation_result(
         category: Metric category
         warnings: List of warning messages
         unit: Override metric unit if needed
+        currency: Currency code for CURRENCY unit type (default: USD)
         
     Returns:
         Complete CalculationResult with plausibility assessment
@@ -276,10 +278,8 @@ def create_calculation_result(
         plausibility_range=plausibility_range,
         warnings=warning_list,
         category=category,
+        currency=currency,
     )
-    
-    # Add the to_reasoning_block method dynamically
-    result.to_reasoning_block = lambda: _format_reasoning_block(result)  # type: ignore
     
     return result
 
@@ -1837,6 +1837,114 @@ class ProfitabilityCalculator(BaseCalculator):
 
 ```
 
+# finanalyst_tools/__init__.py
+```py
+# finanalyst_tools/__init__.py
+"""
+FinAnalyst-Pro Agent Tools - Financial Analysis Toolkit for LLM Agents.
+
+This package provides comprehensive financial analysis capabilities:
+- Profitability metrics (margins, ROA, ROE, etc.)
+- Liquidity ratios (current, quick, cash ratios)
+- 5-phase analysis pipeline (VALIDATE → ANALYZE → CALCULATE → INTERPRET → VERIFY)
+- Dual LLM provider support (OpenAI/Anthropic schema generation)
+
+Example Usage:
+    from finanalyst_tools import ToolRegistry
+    
+    registry = ToolRegistry()
+    result = registry.execute_tool(
+        "analyze_financials",
+        statement_set={...},
+        analysis_type="comprehensive",
+    )
+"""
+
+__version__ = "1.0.0"
+__author__ = "FinAnalyst-Pro Team"
+
+# Core orchestration
+from finanalyst_tools.tool_registry import ToolRegistry
+from finanalyst_tools.dispatcher import ToolDispatcher
+from finanalyst_tools.orchestration.pipeline import AnalysisPipeline, AnalysisRequest
+from finanalyst_tools.orchestration.report_generator import (
+    generate_financial_report,
+    ReportGenerator,
+    ReportFormat,
+)
+from finanalyst_tools.orchestration.confidence_scorer import calculate_confidence_level
+
+# Models
+from finanalyst_tools.models.analysis_results import (
+    CalculationResult,
+    MetricCollection,
+    MetricCategory,
+    MetricUnit,
+    ConfidenceLevel,
+    ComprehensiveAnalysisResult,
+)
+from finanalyst_tools.models.financial_statements import (
+    FinancialStatementSet,
+    IncomeStatementData,
+    BalanceSheetData,
+    CashFlowStatementData,
+    FinancialPeriod,
+)
+from finanalyst_tools.models.validation import (
+    ValidationResult,
+    ValidationIssue,
+    ValidationSeverity,
+)
+
+# Exceptions
+from finanalyst_tools.exceptions import (
+    FinAnalystError,
+    CalculationError,
+    ValidationError,
+    DataError,
+    ToolError,
+)
+
+
+__all__ = [
+    # Version
+    "__version__",
+    # Core
+    "ToolRegistry",
+    "ToolDispatcher",
+    "AnalysisPipeline",
+    "AnalysisRequest",
+    "generate_financial_report",
+    "ReportGenerator",
+    "ReportFormat",
+    "calculate_confidence_level",
+    # Models - Results
+    "CalculationResult",
+    "MetricCollection",
+    "MetricCategory",
+    "MetricUnit",
+    "ConfidenceLevel",
+    "ComprehensiveAnalysisResult",
+    # Models - Financial Statements
+    "FinancialStatementSet",
+    "IncomeStatementData",
+    "BalanceSheetData",
+    "CashFlowStatementData",
+    "FinancialPeriod",
+    # Models - Validation
+    "ValidationResult",
+    "ValidationIssue",
+    "ValidationSeverity",
+    # Exceptions
+    "FinAnalystError",
+    "CalculationError",
+    "ValidationError",
+    "DataError",
+    "ToolError",
+]
+
+```
+
 # finanalyst_tools/exceptions.py
 ```py
 # File: finanalyst_tools/exceptions.py
@@ -2762,7 +2870,7 @@ from finanalyst_tools.models.analysis_results import CalculationResult
 from finanalyst_tools.models.validation import ValidationResult, ValidationIssue, ValidationSeverity
 from finanalyst_tools.exceptions import ToolExecutionError, ToolParameterError
 from finanalyst_tools.config import METRIC_FORMULAS
-from finanalyst_tools.validation.utils import exception_to_validation_result
+from finanalyst_tools.validation.utils import exception_to_validation_result, result_to_reasoning_block
 
 
 def _reject_json_constant(value: str) -> None:
@@ -3070,7 +3178,7 @@ class ToolDefinition:
                 return result.to_reasoning_block()
             elif isinstance(result, ValidationResult):
                 # Handle validation results
-                return _validation_result_to_reasoning_block(result)
+                return result_to_reasoning_block(result)
             elif isinstance(result, dict):
                 # Handle dictionary results (convert to JSON)
                 return json.dumps(result, indent=2)
@@ -3088,65 +3196,7 @@ class ToolDefinition:
                 field=self.name,
                 context=f"tool execution: {self.name}"
             )
-            return _validation_result_to_reasoning_block(validation_result)
-
-
-def _validation_result_to_reasoning_block(result: ValidationResult) -> str:
-    """
-    Convert a ValidationResult to a formatted reasoning block.
-    
-    Args:
-        result: Validation result to format
-        
-    Returns:
-        Formatted markdown block
-    """
-    lines = [
-        f"### Validation Result for {result.context.get('analysis_type', 'analysis')}",
-        "",
-        "**Summary**:",
-        f"- Status: {'✅ Valid' if result.is_valid else '❌ Invalid'}",
-        f"- Errors: {result.error_count}",
-        f"- Warnings: {result.warning_count}",
-        f"- Info: {result.info_count}",
-        "",
-    ]
-    
-    if not result.is_valid:
-        lines.append("**Errors**:")
-        for issue in result.issues:
-            error_icon = "❌ " if issue.severity == ValidationSeverity.ERROR else "⚠️ "
-            lines.append(f"  - {error_icon}{issue.field}: {issue.message}")
-            if issue.actual_value is not None:
-                lines.append(f"    Actual: {issue.actual_value}, Expected: {issue.expected or 'valid value'}")
-            if issue.suggestion:
-                lines.append(f"    Suggestion: {issue.suggestion}")
-        lines.append("")
-    
-    if result.warning_count > 0:
-        lines.append("**Warnings**:")
-        for issue in result.warnings:
-            lines.append(f"  - ⚠️ {issue.field}: {issue.message}")
-            if issue.suggestion:
-                lines.append(f"    Suggestion: {issue.suggestion}")
-        lines.append("")
-    
-    if result.info_count > 0:
-        lines.append("**Information**:")
-        for issue in result.info:
-            lines.append(f"  - ℹ️ {issue.field}: {issue.message}")
-        lines.append("")
-    
-    lines.append("**Recommendation**:")
-    if result.can_proceed:
-        lines.append("✅ Analysis can proceed with the provided data.")
-        if result.warning_count > 0:
-            lines.append("⚠️ However, please review the warnings for potential data quality issues.")
-    else:
-        lines.append("❌ Analysis cannot proceed due to validation errors.")
-        lines.append("Please correct the errors before continuing.")
-    
-    return "\n".join(lines)
+            return result_to_reasoning_block(validation_result)
 
 
 class ToolRegistry:
@@ -5697,8 +5747,13 @@ def validate_balance_sheet_schema(
     else:
         data_dict = data
     
-    # Required fields for basic balance sheet
-    required = ["cash_and_equivalents"]
+    # Required fields for basic balance sheet - strengthened validation
+    required = [
+        "cash_and_equivalents",
+        "total_assets",
+        "total_liabilities",
+        "total_shareholders_equity",
+    ]
     
     for field in required:
         value, found_name = find_field_value(data_dict, field)
@@ -6005,12 +6060,18 @@ def check_plausibility(
 
 def check_all_plausibility(
     metrics: list[CalculationResult],
+    mutate_metrics: bool = True,
 ) -> PlausibilityResult:
     """
     Check plausibility for a list of calculation results.
     
+    Note: By default, this function MUTATES the input metrics by setting
+    `is_plausible=False` and adding warnings for implausible values.
+    Set `mutate_metrics=False` to disable this behavior.
+    
     Args:
         metrics: List of calculation results to check
+        mutate_metrics: If True (default), update metric.is_plausible and add warnings
         
     Returns:
         PlausibilityResult with all check results
@@ -6025,8 +6086,8 @@ def check_all_plausibility(
         )
         result.add_check(check)
         
-        # Update the metric's plausibility status
-        if not check.is_plausible:
+        # Update the metric's plausibility status (if mutation is enabled)
+        if mutate_metrics and not check.is_plausible:
             metric.is_plausible = False
             metric.add_warning(check.message)
     
@@ -6077,15 +6138,21 @@ class PlausibilityChecker:
     def check_all(
         self,
         metrics: list[CalculationResult],
+        mutate_metrics: bool = True,
     ) -> PlausibilityResult:
-        """Check multiple metrics."""
+        """Check multiple metrics.
+        
+        Args:
+            metrics: List of calculation results to check
+            mutate_metrics: If True (default), update metric.is_plausible and add warnings
+        """
         result = PlausibilityResult()
         
         for metric in metrics:
             check = self.check(metric.metric_name, metric.value)
             result.add_check(check)
             
-            if not check.is_plausible:
+            if mutate_metrics and not check.is_plausible:
                 metric.is_plausible = False
                 metric.add_warning(check.message)
         
@@ -6255,10 +6322,16 @@ class AnalysisPipeline:
 
             # Create final result
             return self._create_result(request)
-        except Exception as e:
+        except (FinAnalystError, ValueError, TypeError) as e:
+            # Handle expected errors gracefully
             if self.state is not None:
                 self.state.errors.append(f"Pipeline error in phase '{self.state.current_phase.value}': {str(e)}")
             return self._create_error_result(request, f"Pipeline execution failed: {str(e)}")
+        except Exception as e:
+            # Log unexpected errors but don't silently swallow them
+            if self.state is not None:
+                self.state.errors.append(f"Unexpected error in phase '{self.state.current_phase.value}': {type(e).__name__}: {str(e)}")
+            return self._create_error_result(request, f"Unexpected pipeline error: {type(e).__name__}: {str(e)}")
     
     def _phase_validate(self, request: AnalysisRequest) -> None:
         """
@@ -6597,7 +6670,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 from finanalyst_tools.models.analysis_results import (
     ComprehensiveAnalysisResult,
@@ -6733,7 +6806,7 @@ class ReportGenerator:
         lines.append(f"**Analysis Type**: {result.analysis_type.title()}")
         lines.append(f"**Data Period**: {result.period}")
         lines.append(f"**Currency**: {result.currency}")
-        lines.append(f"**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+        lines.append(f"**Generated**: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
         
         return "\n".join(lines)
     
@@ -6872,7 +6945,7 @@ class ReportGenerator:
         return "\n".join(lines)
 
     def _generate_footer(self) -> str:
-        return f"---\nReport generated by FinAnalyst-Pro on {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        return f"---\nReport generated by FinAnalyst-Pro on {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
 
 ```
 
@@ -8462,6 +8535,7 @@ class CalculationResult:
     plausibility_range: tuple[float, float] | None = None
     warnings: list[str] = field(default_factory=list)
     category: MetricCategory | None = None
+    currency: str = "USD"  # Currency code for CURRENCY unit type
     
     def add_step(self, step: str) -> None:
         """Add a calculation step to the audit trail."""
@@ -8488,7 +8562,10 @@ class CalculationResult:
         elif self.unit == MetricUnit.RATIO:
             return f"{float(self.value):.4f}"
         elif self.unit == MetricUnit.CURRENCY:
-            return f"${float(self.value):,.2f}"
+            # Use currency-specific symbol, fallback to code
+            symbols = {"USD": "$", "SGD": "S$", "EUR": "€", "GBP": "£", "JPY": "¥", "CNY": "¥"}
+            symbol = symbols.get(self.currency, f"{self.currency} ")
+            return f"{symbol}{float(self.value):,.2f}"
         elif self.unit == MetricUnit.DAYS:
             return f"{int(self.value)} days"
         elif self.unit == MetricUnit.TIMES:
@@ -8567,7 +8644,7 @@ class MetricCollection:
     Groups metrics by category with summary statistics.
     """
     category: MetricCategory
-    period: FinancialPeriod | str
+    period: FinancialPeriod  # Normalized to FinancialPeriod only
     metrics: list[CalculationResult] = field(default_factory=list)
     
     def add_metric(self, metric: CalculationResult) -> None:
@@ -9165,19 +9242,21 @@ def execute_tool(tool_name: str, parameters: dict[str, Any]) -> ToolCallResult:
 
 # README.md
 ```md
-# FinAnalyst-Pro Agent Tools
+<div align="center">
 
-[![Python](https://img.shields.io/badge/python-3.x-blue.svg)](https://www.python.org/)
-[![Pydantic](https://img.shields.io/badge/pydantic-v2-0A66C2.svg)](https://docs.pydantic.dev/)
-[![Precision](https://img.shields.io/badge/precision-Decimal-critical.svg)](#decimal-safety--precision)
-[![Agent](https://img.shields.io/badge/agent_system_prompt-v3.0-black.svg)](./AGENT_SYSTEM_PROMPT.md)
+# 🎯 FinAnalyst-Pro Agent Tools
+
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Pydantic v2](https://img.shields.io/badge/pydantic-v2-0A66C2.svg?style=for-the-badge)](https://docs.pydantic.dev/)
+[![Decimal Safe](https://img.shields.io/badge/precision-Decimal-critical.svg?style=for-the-badge)](#decimal-safety--precision)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.0.0-green?style=for-the-badge)](./finanalyst_tools/__init__.py)
 
-A **validation-first, Decimal-safe** financial analysis toolset designed to power an LLM-driven “financial analyst” agent.
+**Validation-first, Decimal-safe financial analysis toolset for LLM-driven agents**
 
-This repo contains:
-- `finanalyst_tools/`: a Python toolset implementing a **5-phase analysis pipeline** (Validate → Analyze → Calculate → Interpret → Verify), with strict numeric handling and audit trails.
-- `AGENT_SYSTEM_PROMPT.md`: the agent system prompt contract (grounding, security, workflow, and output template).
+[Features](#-key-features) • [Quick Start](#-quick-start) • [Architecture](#-pipeline-and-architecture) • [Contributing](#-contributing)
+
+</div>
 
 ---
 
@@ -9248,11 +9327,11 @@ python -m venv .venv
 
 ### 2) Install dependencies
 
-This repo does not currently ship a `requirements.txt` or `pyproject.toml`. The toolset imports `pydantic`.
+This repo ships a `requirements.txt` with the required dependencies.
 
 ```bash
 python -m pip install --upgrade pip
-python -m pip install pydantic
+python -m pip install -r requirements.txt
 ```
 
 ### 3) Run a minimal end-to-end analysis
@@ -9363,7 +9442,21 @@ Each statement includes a `period`:
 
 Notes:
 - Many numeric fields accept `int`, `float`, `str`, or `Decimal`. Tool boundaries normalize numerics to `Decimal`.
-- Field aliases are supported in several places (see validation’s `FIELD_ALIASES`).
+- Field aliases are supported in several places (see validation's `FIELD_ALIASES`).
+
+### Currency Formatting
+
+Results with `unit=CURRENCY` display dynamic currency symbols:
+
+| Code | Symbol | Example |
+|------|--------|---------|
+| USD | $ | $1,000.00 |
+| SGD | S$ | S$1,000.00 |
+| EUR | € | €1,000.00 |
+| GBP | £ | £1,000.00 |
+| JPY/CNY | ¥ | ¥1,000.00 |
+
+Unknown currency codes fall back to displaying the code as prefix (e.g., `CHF 1,000.00`).
 
 ---
 
@@ -9437,6 +9530,7 @@ print(result.success)
 
 ```text
 finanalyst_tools/
+  __init__.py         # Package entry point with public API exports
   calculations/
     base.py
     profitability.py
@@ -9468,21 +9562,98 @@ AGENT_SYSTEM_PROMPT.md
 
 ---
 
-## Development
+## 🛠 Development
 
 ### Recommended checks
 
-- Compile:
-
 ```bash
+# Compile check
 python -m compileall -q finanalyst_tools
+
+# Import validation
+python -c "import finanalyst_tools; print(f'v{finanalyst_tools.__version__}')"
 ```
 
 ### Adding new tools
 
-- Register the tool in `finanalyst_tools/tool_registry.py`.
-- Decide whether it should be model-visible via `expose_to_llm`.
-- Ensure any numeric inputs are safe at boundaries (prefer `Decimal`).
+1. Register the tool in `finanalyst_tools/tool_registry.py`
+2. Set `expose_to_llm=True` if LLM should call it directly
+3. Ensure numeric inputs use `Decimal` at tool boundaries
+4. Add documentation to `AGENT_TOOLSET_HANDBOOK.md`
+
+---
+
+## 📊 Project Status
+
+<div align="center">
+
+| Component | Status | Metrics |
+|-----------|--------|---------|
+| **Core Pipeline** | ✅ Stable | 5-phase workflow |
+| **Profitability** | ✅ Complete | 7 ratios |
+| **Liquidity** | ✅ Complete | 4 ratios |
+| **Solvency** | 📅 Planned | Roadmap |
+| **Efficiency** | 📅 Planned | Roadmap |
+| **Test Suite** | ❌ Missing | Contributions welcome |
+
+</div>
+
+**Current Version**: 1.0.0
+
+---
+
+## 🗺 Roadmap
+
+### Phase 1: Core Foundation ✅ Complete
+- [x] Profitability metrics (7 ratios including margins and returns)
+- [x] Liquidity metrics (4 ratios)
+- [x] 5-phase analysis pipeline with validation gating
+- [x] Dual LLM provider support (OpenAI + Anthropic schemas)
+- [x] Multi-currency formatting (USD, SGD, EUR, GBP, JPY)
+
+### Phase 2: Expansion (Planned)
+- [ ] Solvency ratios (Debt-to-Equity, Interest Coverage)
+- [ ] Efficiency ratios (Asset Turnover, Receivables Turnover)
+- [ ] Trend analysis across periods
+- [ ] Comparative period analysis
+
+### Phase 3: Enterprise (Future)
+- [ ] Comprehensive test suite
+- [ ] API documentation (OpenAPI/Swagger)
+- [ ] Database integration for persistence
+- [ ] Async execution support
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Here's how to get started:
+
+### Development Setup
+
+```bash
+git clone https://github.com/your-username/FinAnalyst-Pro.git
+cd FinAnalyst-Pro
+python -m venv .venv && . .venv/bin/activate
+pip install -r requirements.txt
+python -m compileall -q finanalyst_tools
+```
+
+### Areas Needing Help
+
+| Priority | Area | Skills Needed | Good First Issue? |
+|----------|------|---------------|-------------------|
+| **High** | Test Suite | pytest, coverage | ✅ Yes |
+| **Medium** | Documentation | Technical writing | ✅ Yes |
+| **Medium** | New Ratios | Financial analysis | No |
+| **Low** | Performance | Python optimization | No |
+
+### Pull Request Guidelines
+
+1. **Keep focused**: One feature/fix per PR
+2. **Add tests**: New features need tests (when test suite exists)
+3. **Update docs**: Document changes in AGENT_TOOLSET_HANDBOOK.md
+4. **Run checks**: `python -m compileall -q finanalyst_tools`
 
 ---
 
@@ -9493,7 +9664,7 @@ FinAnalyst-Pro is released under the **MIT License**. See the [LICENSE](LICENSE)
 ```text
 MIT License
 
-Copyright (c) 2025 Your Name
+Copyright (c) 2025 FinAnalyst-Pro Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -9514,6 +9685,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+---
+
+<div align="center">
+
+**Built with precision for financial analysts who value accuracy.**
+
+[Report Bug](https://github.com/your-username/FinAnalyst-Pro/issues) · 
+[Request Feature](https://github.com/your-username/FinAnalyst-Pro/issues) · 
+[View Handbook](./AGENT_TOOLSET_HANDBOOK.md)
+
+</div>
 
 ```
 
@@ -9703,6 +9885,20 @@ Tool inputs are validated and coerced at execution time.
 
 If coercion/validation fails, the registry raises a `ToolParameterError` (or returns a formatted validation block when executing via `ToolDefinition.execute`).
 
+### Currency formatting
+
+The toolkit supports dynamic currency symbol formatting. When a `CalculationResult` has `unit=CURRENCY`, the `formatted_value` property uses the result's `currency` field:
+
+| Currency Code | Symbol | Example |
+|---------------|--------|----------|
+| USD | $ | $1,000.00 |
+| SGD | S$ | S$1,000.00 |
+| EUR | € | €1,000.00 |
+| GBP | £ | £1,000.00 |
+| JPY / CNY | ¥ | ¥1,000.00 |
+
+Unknown currencies fall back to displaying the currency code as prefix.
+
 ---
 
 ## Two execution paths (choose based on integration)
@@ -9713,7 +9909,7 @@ If coercion/validation fails, the registry raises a `ToolParameterError` (or ret
 
 - **Returns a string**:
   - `CalculationResult` → converted to a Markdown-style reasoning block (`CalculationResult.to_reasoning_block()`).
-  - `ValidationResult` → converted to a validation summary block (`_validation_result_to_reasoning_block`).
+  - `ValidationResult` → converted to a validation summary block (via `result_to_reasoning_block` from `validation.utils`).
   - `dict` → pretty JSON string.
   - `str` → returned as-is.
 
@@ -9797,6 +9993,14 @@ All other tools are registered but `expose_to_llm=False` (internal-only by desig
 - If `report_format == "json"`, returns `result.to_json()`.
 - Otherwise returns Markdown via `generate_financial_report(..., format=ReportFormat.MARKDOWN, include_audit_trail=...)`.
 
+> **Important (v1.0.0)**: Balance sheet validation now requires these fields:
+> - `cash_and_equivalents`
+> - `total_assets`
+> - `total_liabilities`
+> - `total_shareholders_equity`
+>
+> Balance sheets missing any of these will fail validation.
+
 **Example (ToolDispatcher style)**
 
 ```json
@@ -9819,7 +10023,8 @@ All other tools are registered but `expose_to_llm=False` (internal-only by desig
         "total_liabilities": 450000,
         "total_shareholders_equity": 350000,
         "current_assets": 500000,
-        "current_liabilities": 300000
+        "current_liabilities": 300000,
+        "inventory": 50000
       }
     },
     "analysis_type": "comprehensive",
